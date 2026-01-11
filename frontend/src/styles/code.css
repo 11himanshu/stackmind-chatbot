@@ -1,0 +1,158 @@
+/* =========================================================
+   Code Block Wrapper
+   ---------------------------------------------------------
+   - Contains Prism-highlighted code
+   - Scoped to avoid leaking styles into chat UI
+   ========================================================= */
+.code-wrapper {
+  background: #0f172a;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-top: 12px;
+}
+
+/* =========================================================
+   Code Block Header (language + copy button)
+   ========================================================= */
+.code-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #020617;
+  color: #e5e7eb;
+  font-size: 12px;
+}
+
+/* Copy button */
+.code-header button {
+  background: transparent;
+  border: 1px solid #334155;
+  color: #e5e7eb;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.code-header button:hover {
+  background: #1e293b;
+}
+
+/* =========================================================
+   Prism Code Area
+   IMPORTANT:
+   - These styles MUST be scoped under .code-wrapper
+   - Never style global `pre` or `code`
+   - Prevents breaking Prism token colors
+   ========================================================= */
+.code-wrapper pre {
+  margin: 0;
+  padding: 16px;
+  overflow-x: auto;
+  font-size: 13px;
+  background: transparent; /* Prism theme handles background */
+}
+
+/* Code font only (do NOT override colors) */
+.code-wrapper code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* =========================================================
+   Optional polish (safe)
+   ========================================================= */
+
+/* Smooth horizontal scrolling */
+.code-wrapper pre::-webkit-scrollbar {
+  height: 8px;
+}
+
+.code-wrapper pre::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
+
+.code-wrapper pre::-webkit-scrollbar-track {
+  background: transparent;
+}
+/* =========================================================
+   Code Block Wrapper
+   ---------------------------------------------------------
+   - Contains Prism-highlighted code
+   - Scoped to avoid leaking styles into chat UI
+   ========================================================= */
+.code-wrapper {
+  background: #0f172a;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-top: 12px;
+}
+
+/* =========================================================
+   Code Block Header (language + copy button)
+   ========================================================= */
+.code-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #020617;
+  color: #e5e7eb;
+  font-size: 12px;
+}
+
+/* Copy button */
+.code-header button {
+  background: transparent;
+  border: 1px solid #334155;
+  color: #e5e7eb;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.code-header button:hover {
+  background: #1e293b;
+}
+
+/* =========================================================
+   Prism Code Area
+   IMPORTANT:
+   - These styles MUST be scoped under .code-wrapper
+   - Never style global `pre` or `code`
+   - Prevents breaking Prism token colors
+   ========================================================= */
+.code-wrapper pre {
+  margin: 0;
+  padding: 16px;
+  overflow-x: auto;
+  font-size: 13px;
+  background: transparent; /* Prism theme handles background */
+}
+
+/* Code font only (do NOT override colors) */
+.code-wrapper code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* =========================================================
+   Optional polish (safe)
+   ========================================================= */
+
+/* Smooth horizontal scrolling */
+.code-wrapper pre::-webkit-scrollbar {
+  height: 8px;
+}
+
+.code-wrapper pre::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
+
+.code-wrapper pre::-webkit-scrollbar-track {
+  background: transparent;
+}
