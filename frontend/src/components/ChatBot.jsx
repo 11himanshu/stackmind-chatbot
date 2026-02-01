@@ -1,28 +1,46 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { streamMessage, fetchConversationHistory } from '../services/api'
+import { chatStream, fetchConversationHistory } from '../services/api'
 import CodeBlock from './CodeBlock.jsx'
 import './ChatBot.css'
 
 /*
   ChatBot Component
-  -----------------
+  ----------------
   Responsibilities:
-  - Render chat UI
-  - Handle sentence-level streaming
-  - Preserve code blocks (```language ... ```)
-  - Support conversation switching from sidebar
+  - Render chat messages (user + assistant)
+  - Stream assistant responses from backend
+  - Preserve markdown formatting (**bold**, bullets, headings, code blocks)
+  - Load conversation history when selected
+  - Report newly-created conversation_id to parent (ChatLayout)
+
+  ARCHITECTURE GUARANTEES:
+  - ChatBot does NOT own layout (header/sidebar)
+  - ChatBot does NOT own global conversation state
+  - ChatBot NEVER resets itself on conversation creation
 */
 
-const ChatBot = ({ activeConversationId }) => {
+const ChatBot = ({ activeConversationId, onConversationCreated }) => {
+  // =========================================================
+  // UI state
+  // =========================================================
   const [messages, setMessages] = useState([])
   const [inputMessage, setInputMessage] = useState('')
   const [loading, setLoading] = useState(false)
   const [isStreaming, setIsStreaming] = useState(false)
-  const messagesEndRef = useRef(null)
 
   // =========================================================
-  // Streaming control refs (DO NOT MODIFY LOGIC)
+  // Conversation id reference
+  // ---------------------------------------------------------
+  // IMPORTANT:
+  // - This ref DOES NOT cause re-render
+  // - Persists conversation_id across streaming
   // =========================================================
+  const conversationIdRef = useRef(activeConversationId)
+
+  // =========================================================
+  // Refs for scrolling + streaming control
+  // =========================================================
+  const messagesEndRef = useRef(null)
   const chunkQueueRef = useRef([])
   const isProcessingRef = useRef(false)
   const sentenceBufferRef = useRef('')
@@ -32,39 +50,54 @@ const ChatBot = ({ activeConversationId }) => {
   }
 
   // =========================================================
-  // Reset streaming state when switching conversations
+  // 🔥 CRITICAL FIX — SAFE RESET LOGIC
+  // ---------------------------------------------------------
+  // Reset ONLY when USER switches conversations
+  // NOT when backend creates a conversation_id
   // =========================================================
   useEffect(() => {
-    chunkQueueRef.current = []
-    sentenceBufferRef.current = ''
-    isProcessingRef.current = false
-    setIsStreaming(false)
-  }, [activeConversationId])
+    const isUserSwitch =
+      conversationIdRef.current !== null &&
+      conversationIdRef.current !== activeConversationId
 
-  // =========================================================
-  // Welcome message (only when no conversation selected)
-  // =========================================================
-  useEffect(() => {
-    if (!activeConversationId) {
-      setMessages([
-        {
-          role: 'assistant',
-          message: "Nice to meet you. What's on your mind?",
-          timestamp: new Date(),
-          variant: 'welcome'
-        }
-      ])
+    if (isUserSwitch) {
+      // Hard reset streaming state
+      chunkQueueRef.current = []
+      sentenceBufferRef.current = ''
+      isProcessingRef.current = false
+
+      setIsStreaming(false)
+      setMessages([])
     }
+
+    // ALWAYS sync ref AFTER decision
+    conversationIdRef.current = activeConversationId
   }, [activeConversationId])
 
   // =========================================================
-  // Load conversation history when user selects from sidebar
+  // Welcome message (ONLY for brand new chat)
+  // =========================================================
+  useEffect(() => {
+    if (activeConversationId !== null) return
+
+    setMessages([
+      {
+        role: 'assistant',
+        message: "Nice to meet you. What's on your mind?",
+        timestamp: new Date(),
+        variant: 'welcome'
+      }
+    ])
+  }, [activeConversationId])
+
+  // =========================================================
+  // Load conversation history
   // =========================================================
   useEffect(() => {
     if (!activeConversationId) return
 
-    fetchConversationHistory(activeConversationId, 1)
-      .then(res => setMessages(res.messages))
+    fetchConversationHistory(activeConversationId)
+      .then(res => setMessages(res.messages || []))
       .catch(() => {
         setMessages([
           {
@@ -77,6 +110,9 @@ const ChatBot = ({ activeConversationId }) => {
       })
   }, [activeConversationId])
 
+  // =========================================================
+  // Auto-scroll
+  // =========================================================
   useEffect(() => {
     scrollToBottom()
   }, [messages, isStreaming])
@@ -84,7 +120,7 @@ const ChatBot = ({ activeConversationId }) => {
   const sleep = (ms) => new Promise(r => setTimeout(r, ms))
 
   // =========================================================
-  // Sentence-level streaming processor (UNCHANGED)
+  // Sentence-level streaming processor
   // =========================================================
   const processQueue = async (assistantIndex) => {
     if (isProcessingRef.current) return
@@ -117,40 +153,81 @@ const ChatBot = ({ activeConversationId }) => {
   }
 
   // =========================================================
-  // NEW: Render message with fenced code block support
-  // This preserves ```language ... ``` exactly like ChatGPT
+  // MARKDOWN RENDERER (EDGE-CASE COMPLETE)
   // =========================================================
   const renderMessage = (text) => {
-    // Split on triple backticks
-    const parts = text.split(/```/g)
+    const blocks = text.split(/```/g)
 
-    return parts.map((part, index) => {
-      // Odd indexes = code blocks
+    return blocks.map((block, index) => {
+      // ---------- Code block ----------
       if (index % 2 === 1) {
-        const lines = part.split('\n')
-        const language = lines[0].trim()
-        const code = lines.slice(1).join('\n')
-
+        const lines = block.split('\n')
         return (
           <CodeBlock
             key={index}
-            language={language}
-            code={code}
+            language={lines[0].trim()}
+            code={lines.slice(1).join('\n')}
           />
         )
       }
 
-      // Even indexes = normal text
-      return (
-        <span key={index}>
-          {part}
-        </span>
-      )
+      // ---------- Normal text ----------
+      return block.split('\n').map((rawLine, i) => {
+        const line = rawLine.trim()
+
+        if (!line) {
+          return <div key={`${index}-${i}`} className="msg-spacer" />
+        }
+
+        // Headings ###, ####
+        if (/^#{2,4}\s+/.test(line)) {
+          return (
+            <div key={`${index}-${i}`} className="msg-heading">
+              {line.replace(/^#{2,4}\s*/, '')}
+            </div>
+          )
+        }
+
+        // Numbered lists
+        if (/^\d+\.\s+/.test(line)) {
+          return (
+            <div key={`${index}-${i}`} className="msg-bullet">
+              <span className="bullet-dot">•</span>
+              <span>{line.replace(/^\d+\.\s+/, '')}</span>
+            </div>
+          )
+        }
+
+        // Bullets *, +, •
+        if (/^(\* |\+ |• )/.test(line)) {
+          return (
+            <div key={`${index}-${i}`} className="msg-bullet">
+              <span className="bullet-dot">•</span>
+              <span>{line.replace(/^(\* |\+ |• )/, '')}</span>
+            </div>
+          )
+        }
+
+        // Inline bold **text**
+        const parts = line.split(/(\*\*.*?\*\*)/g)
+
+        return (
+          <div key={`${index}-${i}`} className="msg-line">
+            {parts.map((part, j) =>
+              part.startsWith('**') ? (
+                <strong key={j}>{part.replace(/\*\*/g, '')}</strong>
+              ) : (
+                <span key={j}>{part}</span>
+              )
+            )}
+          </div>
+        )
+      })
     })
   }
 
   // =========================================================
-  // Handle sending user message
+  // Handle send (STREAM + SAVE)
   // =========================================================
   const handleSend = async (e) => {
     e.preventDefault()
@@ -161,39 +238,38 @@ const ChatBot = ({ activeConversationId }) => {
     setLoading(true)
     setIsStreaming(true)
 
+    // Push user message immediately
     setMessages(prev => [
       ...prev,
       { role: 'user', message: userMessage, timestamp: new Date() }
     ])
 
+    // Placeholder assistant message
     let assistantIndex
-
     setMessages(prev => {
       assistantIndex = prev.length
-      return [
-        ...prev,
-        { role: 'assistant', message: '', timestamp: new Date() }
-      ]
+      return [...prev, { role: 'assistant', message: '', timestamp: new Date() }]
     })
 
     try {
-      await streamMessage(userMessage, activeConversationId, (chunk) => {
-        chunkQueueRef.current.push(chunk)
-        processQueue(assistantIndex)
-      })
-    } catch {
-      setMessages(prev => {
-        const updated = [...prev]
-        updated[assistantIndex] = {
-          role: 'assistant',
-          message: 'Sorry, something went wrong. Please try again.',
-          timestamp: new Date(),
-          error: true
+      await chatStream(
+        userMessage,
+        conversationIdRef.current,
+        (chunk) => {
+          // 🔥 META MESSAGE (STRING, SENT ONCE)
+          if (chunk.startsWith('__META__')) {
+            const meta = JSON.parse(chunk.replace('__META__', '').trim())
+            conversationIdRef.current = meta.conversation_id
+            onConversationCreated?.(meta.conversation_id)
+            return
+          }
+
+          chunkQueueRef.current.push(chunk)
+          processQueue(assistantIndex)
         }
-        return updated
-      })
+      )
     } finally {
-      // Flush remaining buffered text
+      // Flush remaining buffer
       if (sentenceBufferRef.current) {
         setMessages(prev => {
           const updated = [...prev]
@@ -209,102 +285,45 @@ const ChatBot = ({ activeConversationId }) => {
   }
 
   // =========================================================
-  // Render UI
+  // UI
   // =========================================================
   return (
     <div className="chatbot-container">
-      <div className="chatbot-header">
-        <div className="header-left">
-          <div className="logo">
-            <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
-              <defs>
-                <linearGradient id="cubeGrad" x1="0" y1="0" x2="36" y2="36">
-                  <stop offset="0%" stopColor="#141e30" />
-                  <stop offset="100%" stopColor="#243b55" />
-                </linearGradient>
-              </defs>
-              <path d="M18 4L30 10L18 16L6 10L18 4Z" fill="url(#cubeGrad)" />
-              <path d="M30 10V22L18 28V16L30 10Z" fill="#1f2f46" />
-              <path d="M6 10V22L18 28V16L6 10Z" fill="#2c3e5a" />
-            </svg>
-          </div>
-
-          <div>
-            <h1>StackMind</h1>
-            <p className="header-subtitle">Powered by Himanshu</p>
-          </div>
-        </div>
-      </div>
-
       <div className="messages-container">
-        {messages.map((msg, index) => (
+        {messages.map((msg, i) => (
           <div
-            key={index}
+            key={i}
             className={`message ${msg.role} ${msg.variant || ''} ${msg.error ? 'error' : ''}`}
           >
-            {msg.role === 'assistant' && (
-              <div className="message-avatar">
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                  <rect x="3" y="3" width="14" height="14" rx="4" fill="#243b55" opacity="0.2" />
-                </svg>
-              </div>
-            )}
-
             <div className="message-content">
               <div className="message-text">
                 {renderMessage(msg.message)}
                 {isStreaming &&
                   msg.role === 'assistant' &&
-                  index === messages.length - 1 && (
+                  i === messages.length - 1 && (
                     <span className="cursor">▍</span>
                   )}
               </div>
-
-              <div className="message-time">
-                {new Date(msg.timestamp).toLocaleTimeString([], {
-                  hour: '2-digit',
-                  minute: '2-digit'
-                })}
-              </div>
             </div>
-
-            {msg.role === 'user' && (
-              <div className="message-avatar user-avatar">
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                  <circle cx="10" cy="10" r="9" fill="white" opacity="0.35" />
-                </svg>
-              </div>
-            )}
           </div>
         ))}
-
         <div ref={messagesEndRef} />
       </div>
 
       <form className="input-container" onSubmit={handleSend}>
         <input
-          type="text"
+          className="message-input"
           value={inputMessage}
           onChange={(e) => setInputMessage(e.target.value)}
           placeholder="Ask StackMind…"
-          className="message-input"
           disabled={loading}
         />
 
         <button
-          type="submit"
           className="send-button"
           disabled={loading || !inputMessage.trim()}
         >
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <path
-              d="M18 2L9 11M18 2L12 18L9 11M18 2L2 8L9 11"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+          Send
         </button>
       </form>
     </div>

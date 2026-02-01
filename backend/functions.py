@@ -1,37 +1,57 @@
 import re
+import json
 import logging
+from typing import Generator
 from sqlalchemy.orm import Session
+
 from models.conversations import Conversation
 from models.message import Message
+from utils import _post_clean, _violates_identity
 
 logger = logging.getLogger(__name__)
 
+# ============================================================
+# Optional LLM import
+# - Streaming ONLY
+# - Single LLM call per user message
+# ============================================================
 try:
-    from llm_service import get_llm_response
+    from llm_service import get_llm_response_stream
     USE_LLM = True
 except ImportError:
     USE_LLM = False
 
 
-def process_chat_message(
+# ============================================================
+# STREAMING CHAT PROCESSOR (PRODUCTION-GRADE)
+# ============================================================
+def process_chat_stream(
     db: Session,
     user_id: int,
     message: str,
     conversation_id: int | None = None
-) -> str:
+) -> Generator[str, None, None]:
     """
-    Process a chat message:
-    - create conversation if needed
-    - call LLM
-    - store user + assistant messages in DB
-    """
-    print(">>> ENTERED process_chat_message <<<")
-    logger.info(
-        f"Processing chat message "
-    )
+    Streaming chat with persistence.
 
-    # ---- Get or create conversation ----
-    if conversation_id:
+    GUARANTEES:
+    --------------------------------
+    - ONE LLM call per message
+    - ONE conversation per chat session
+    - conversation_id emitted ONCE as metadata
+    - ONLY assistant text is streamed
+    - Markdown is never polluted
+    - Messages are persisted AFTER stream completes
+    """
+
+    logger.info("Entered process_chat_stream")
+
+    # ========================================================
+    # Fetch existing conversation (ONLY if id provided)
+    # ========================================================
+    conversation = None
+
+    if conversation_id is not None:
         conversation = (
             db.query(Conversation)
             .filter(
@@ -40,18 +60,34 @@ def process_chat_message(
             )
             .first()
         )
-        logger.info(f"Fetched existing conversation: {conversation_id}")
-    else:
-        conversation = None
 
-    if not conversation:
+        if conversation:
+            logger.info(f"Using existing conversation_id={conversation_id}")
+        else:
+            logger.warning(
+                f"Invalid conversation_id={conversation_id} for user_id={user_id}"
+            )
+
+    # ========================================================
+    # Create new conversation ONLY when id is None
+    # ========================================================
+    if conversation is None:
         logger.info("Creating new conversation")
         conversation = Conversation(user_id=user_id)
         db.add(conversation)
         db.commit()
         db.refresh(conversation)
 
-    # ---- Fetch conversation history (ordered) ----
+    logger.info(f"Active conversation_id={conversation.id}")
+
+    # ========================================================
+    # SEND METADATA ONCE (FRONTEND MUST STRIP THIS)
+    # ========================================================
+    yield f'__META__{json.dumps({"conversation_id": conversation.id})}\n'
+
+    # ========================================================
+    # Fetch conversation history for LLM context
+    # ========================================================
     history = (
         db.query(Message)
         .filter(Message.conversation_id == conversation.id)
@@ -59,63 +95,85 @@ def process_chat_message(
         .all()
     )
 
-    logger.info(
-        f"Fetched {len(history)} messages from conversation_id={conversation.id}"
-    )
-
     llm_history = [
-        {"role": m.role, "message": m.content}
+        {"role": m.role, "message": m.message}
         for m in history
     ]
 
-    # ---- Call LLM (do NOT store user msg yet) ----
-    if USE_LLM:
-        logger.info("Calling LLM for response")
+    logger.info(
+        f"Fetched {len(history)} messages "
+        f"for conversation_id={conversation.id}"
+    )
+
+    # ========================================================
+    # STREAM LLM RESPONSE (TEXT ONLY)
+    # ========================================================
+    assistant_full_response = ""
+
+    if not USE_LLM:
+        logger.warning("LLM disabled, echoing message")
+        assistant_full_response = f"Echo: {message}"
+        yield assistant_full_response
+    else:
+        logger.info("Starting LLM streaming")
+
         try:
-            bot_response = get_llm_response(
+            stream = get_llm_response_stream(
                 message=message,
                 conversation_history=llm_history
             )
 
-            if bot_response and not bot_response.startswith("Error"):
-                bot_response = _post_clean(bot_response)
+            for chunk in stream:
+                if not chunk:
+                    continue
 
-                if _violates_identity(bot_response):
-                    logger.info("LLM identity violation detected")
-                    bot_response = (
-                        "I am Himanshu’s Bot. "
-                        "I was built by Himanshu, the brain behind this masterpiece."
-                    )
-        except Exception as e:
-            logger.info(f"LLM call failed: {e}")
-            bot_response = f"Error: {str(e)}"
-    else:
-        logger.info("LLM disabled, echoing message")
-        bot_response = f"Echo: {message}"
+                assistant_full_response += chunk
+                yield chunk  # 🔥 PURE TEXT — NO METADATA
 
-    # ---- Store messages in DB (correct order) ----
-    logger.info("Storing user and assistant messages in DB")
+        except Exception:
+            logger.exception("LLM streaming failed")
+            assistant_full_response = "Sorry, something went wrong."
+            yield assistant_full_response
 
-    user_msg = Message(
-        conversation_id=conversation.id,
-        role="user",
-        message=message
-    )
+    # ========================================================
+    # POST-PROCESS RESPONSE (SAFETY ONLY)
+    # ========================================================
+    assistant_full_response = _post_clean(assistant_full_response)
 
-    assistant_msg = Message(
-        conversation_id=conversation.id,
-        role="assistant",
-        message=bot_response
-    )
-    db.add_all([user_msg, assistant_msg])
+    if _violates_identity(assistant_full_response):
+        assistant_full_response = (
+            "I am Himanshu’s Bot. "
+            "I was built by Himanshu, the brain behind this masterpiece."
+        )
+
+    # ========================================================
+    # PERSIST MESSAGES (AFTER STREAM COMPLETES)
+    # ========================================================
+    logger.info("Persisting messages to database")
+
+    db.add_all([
+        Message(
+            conversation_id=conversation.id,
+            role="user",
+            message=message
+        ),
+        Message(
+            conversation_id=conversation.id,
+            role="assistant",
+            message=assistant_full_response
+        )
+    ])
+
     db.commit()
 
     logger.info(
-        f"Messages stored successfully | conversation_id={conversation.id}"
+        f"Messages saved successfully | conversation_id={conversation.id}"
     )
 
-    return bot_response, conversation.id
 
+# ============================================================
+# FETCH FULL CONVERSATION HISTORY
+# ============================================================
 def get_conversation_history(
     db: Session,
     user_id: int,
@@ -123,11 +181,8 @@ def get_conversation_history(
 ) -> list[dict]:
     """
     Fetch full conversation history for frontend.
+    SINGLE SOURCE OF TRUTH for history rendering.
     """
-
-    logger.info(
-        f"Fetching conversation history | user_id={user_id}, conversation_id={conversation_id}"
-    )
 
     messages = (
         db.query(Message)
@@ -140,32 +195,27 @@ def get_conversation_history(
         .all()
     )
 
-    logger.info(
-        f"Fetched {len(messages)} messages for conversation_id={conversation_id}"
-    )
-
     return [
         {
             "role": m.role,
-            "message": m.message,   # ← important fix
+            "message": m.message,
             "timestamp": m.created_at
         }
         for m in messages
     ]
 
 
+# ============================================================
+# DELETE CONVERSATION
+# ============================================================
 def delete_conversation(
     db: Session,
     user_id: int,
     conversation_id: int
-):
+) -> bool:
     """
-    Delete conversation + messages.
+    Delete conversation and all messages.
     """
-
-    logger.info(
-        f"Deleting conversation | user_id={user_id}, conversation_id={conversation_id}"
-    )
 
     conversation = (
         db.query(Conversation)
@@ -177,40 +227,23 @@ def delete_conversation(
     )
 
     if not conversation:
-        logger.info("Conversation not found")
         return False
 
     db.delete(conversation)
     db.commit()
-
-    logger.info("Conversation deleted successfully")
     return True
 
 
-# ---------- helpers ----------
-
-def _post_clean(text: str) -> str:
-    text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
-    text = re.sub(r"\*([^*]+)\*", r"\1", text)
-    return text.strip()
-
-
-def _violates_identity(text: str) -> bool:
-    bad_phrases = [
-        "i don't have a name",
-        "i do not have a name",
-        "i don't have an owner",
-        "i do not have an owner",
-        "collective project",
-        "technology company",
-        "assistant or ai assistant"
-    ]
-    lower = text.lower()
-    return any(p in lower for p in bad_phrases)
-
-
-def list_user_conversations(db: Session, user_id: int) -> list[dict]:
-    logger.info(f"Listing conversations for user_id={user_id}")
+# ============================================================
+# LIST CONVERSATIONS FOR SIDEBAR
+# ============================================================
+def list_user_conversations(
+    db: Session,
+    user_id: int
+) -> list[dict]:
+    """
+    List conversations for sidebar.
+    """
 
     conversations = (
         db.query(Conversation)
@@ -232,17 +265,58 @@ def list_user_conversations(db: Session, user_id: int) -> list[dict]:
             .first()
         )
 
-        if first_user_msg and first_user_msg.message:
-            title = first_user_msg.message.strip()
-            if len(title) > 60:
-                title = title[:60] + "…"
-        else:
-            title = "New conversation"
+        title = (
+            first_user_msg.message[:60] + "…"
+            if first_user_msg and first_user_msg.message
+            else "New conversation"
+        )
 
         results.append({
             "id": c.id,
             "title": title
         })
 
-    logger.info(f"Returning {len(results)} conversations")
     return results
+
+
+
+# ============================================================
+# DELETE CONVERSATION
+# ============================================================
+
+def delete_conversation(
+    db: Session,
+    user_id: int,
+    conversation_id: int
+) -> bool:
+    """
+    Delete conversation AND all associated messages.
+
+    IMPORTANT:
+    - Messages must be deleted FIRST
+    - Conversation must be deleted LAST
+    - This avoids foreign key violations
+    """
+
+    conversation = (
+        db.query(Conversation)
+        .filter(
+            Conversation.id == conversation_id,
+            Conversation.user_id == user_id
+        )
+        .first()
+    )
+
+    if not conversation:
+        return False
+
+    # 🔥 DELETE CHILD ROWS FIRST (CRITICAL FIX)
+    db.query(Message).filter(
+        Message.conversation_id == conversation.id
+    ).delete(synchronize_session=False)
+
+    # 🔥 THEN DELETE THE CONVERSATION
+    db.delete(conversation)
+
+    db.commit()
+    return True

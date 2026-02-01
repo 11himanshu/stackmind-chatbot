@@ -2,6 +2,10 @@ from pydantic import BaseModel
 from typing import Optional
 
 
+# =========================================================
+# Chat schemas
+# =========================================================
+
 class ChatMessage(BaseModel):
     message: str
     conversation_id: Optional[str] = None
@@ -17,6 +21,10 @@ class HealthResponse(BaseModel):
     message: str
 
 
+# =========================================================
+# Auth request schemas
+# =========================================================
+
 class UserRegister(BaseModel):
     username: str
     password: str
@@ -27,7 +35,15 @@ class UserLogin(BaseModel):
     password: str
 
 
-class AuthResponse(BaseModel):
-    username: str
-    message: str
+# =========================================================
+# Auth response schema (CRITICAL)
+# ---------------------------------------------------------
+# This MUST match what auth_router returns
+# Otherwise FastAPI will DROP fields silently
+# =========================================================
 
+class AuthResponse(BaseModel):
+    user_id: int
+    username: str
+    token: str
+    message: str

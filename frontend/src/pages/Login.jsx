@@ -1,15 +1,38 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { login } from '../services/api'
 import './Auth.css'
+
+/*
+  Login Page
+  ----------
+  Responsibilities:
+  - Authenticate user
+  - Store token + user in localStorage
+  - Redirect authenticated users
+*/
 
 const Login = () => {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
   const navigate = useNavigate()
 
+  // =========================================================
+  // Redirect if already logged in
+  // =========================================================
+  useEffect(() => {
+    const token = localStorage.getItem('token')
+    if (token) {
+      navigate('/chat', { replace: true })
+    }
+  }, [navigate])
+
+  // =========================================================
+  // Handle login
+  // =========================================================
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
@@ -20,10 +43,22 @@ const Login = () => {
     }
 
     setLoading(true)
+
     try {
       const res = await login(username, password)
-      localStorage.setItem('username', res.username)
-      navigate('/chat')
+
+      // 🔑 STORE AUTH DATA (CRITICAL)
+      localStorage.setItem('token', res.token)
+      localStorage.setItem(
+        'user',
+        JSON.stringify({
+          id: res.user_id,
+          username: res.username
+        })
+      )
+
+      navigate('/chat', { replace: true })
+
     } catch (err) {
       setError(err.message || 'Invalid credentials')
     } finally {
@@ -34,10 +69,10 @@ const Login = () => {
   return (
     <div className="auth-container">
       <div className="auth-card">
-        {/* Header */}
+
+        {/* ================= Header ================= */}
         <div className="auth-header">
           <div className="auth-logo">
-            {/* StackMind cube logo */}
             <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
               <defs>
                 <linearGradient id="authCube" x1="0" y1="0" x2="36" y2="36">
@@ -57,7 +92,7 @@ const Login = () => {
 
         {error && <div className="auth-error">{error}</div>}
 
-        {/* Form */}
+        {/* ================= Form ================= */}
         <form onSubmit={handleSubmit} className="auth-form">
           <label>
             Username
@@ -86,11 +121,12 @@ const Login = () => {
           </button>
         </form>
 
-        {/* Footer */}
+        {/* ================= Footer ================= */}
         <div className="auth-footer">
           <span>New to StackMind?</span>
           <Link to="/register">Create an account</Link>
         </div>
+
       </div>
     </div>
   )
