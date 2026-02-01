@@ -68,7 +68,9 @@ const ChatLayout = () => {
   const handleLogout = () => {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
-    window.location.href = '/login'
+
+    // ✅ FIX: avoid SPA hard refresh issues
+    window.location.replace('/login')
   }
 
   return (
@@ -106,6 +108,8 @@ const ChatLayout = () => {
         {/* ================= Header ================= */}
         <header
           style={{
+            position: 'sticky', // ✅ FIX: header always visible
+            top: 0,
             height: 64,
             padding: '0 16px',
             display: 'flex',
@@ -116,7 +120,7 @@ const ChatLayout = () => {
             borderBottom: `1px solid ${borderColor}`,
             backdropFilter: 'blur(12px)',
             WebkitBackdropFilter: 'blur(12px)',
-            zIndex: 30
+            zIndex: 100
           }}
         >
           {/* ===== Left ===== */}
@@ -132,7 +136,7 @@ const ChatLayout = () => {
                 background: 'var(--bg-input)',
                 cursor: 'pointer',
                 fontSize: 18,
-                color: 'var(--menu-icon-color)', // ✅ FIX: visible in dark mode
+                color: 'var(--menu-icon-color)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center'
@@ -153,7 +157,7 @@ const ChatLayout = () => {
 
           {/* ===== Right ===== */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {/* Theme toggle (ICON ONLY) */}
+            {/* Theme toggle */}
             <button
               onClick={() =>
                 setTheme(prev => (prev === 'dark' ? 'light' : 'dark'))
@@ -218,7 +222,7 @@ const ChatLayout = () => {
                     borderRadius: 12,
                     boxShadow: '0 12px 30px rgba(0,0,0,0.18)',
                     padding: 8,
-                    zIndex: 50
+                    zIndex: 200
                   }}
                 >
                   <div
@@ -240,8 +244,7 @@ const ChatLayout = () => {
                       borderRadius: 8
                     }}
                     onMouseEnter={(e) =>
-                      (e.currentTarget.style.background =
-                        'rgba(0,0,0,0.06)')
+                      (e.currentTarget.style.background = 'rgba(0,0,0,0.06)')
                     }
                     onMouseLeave={(e) =>
                       (e.currentTarget.style.background = 'transparent')

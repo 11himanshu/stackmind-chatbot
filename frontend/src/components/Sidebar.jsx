@@ -42,14 +42,17 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
   }
 
   const handleNewChat = () => {
+    // New chat = close sidebar + clear active conversation
     onSelectConversation(null)
   }
 
   const handleSelect = (id) => {
+    // Selecting conversation also closes sidebar (mobile)
     onSelectConversation(id)
   }
 
   const handleClose = () => {
+    // Close sidebar WITHOUT changing conversation
     onSelectConversation(activeConversationId)
   }
 
@@ -117,7 +120,7 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
         >
           <strong style={{ fontSize: 14 }}>Conversations</strong>
 
-          {/* ✕ Close ONLY on mobile */}
+          {/* ✕ Close (mobile only) */}
           {isMobile && (
             <button
               onClick={handleClose}
@@ -148,16 +151,12 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
               width: '100%',
               padding: '14px',
               borderRadius: 14,
-
-              /* 🔥 THE FIX */
               background: 'var(--bg-surface)',
               color: 'var(--text-primary)',
               border: '1px solid var(--border-strong)',
-
               fontSize: 15,
               fontWeight: 600,
               cursor: 'pointer',
-
               boxShadow: 'var(--shadow-soft)'
             }}
           >
@@ -203,11 +202,9 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
 
                   cursor: 'pointer',
                   borderRadius: 12,
-
                   border: isActive
                     ? '1px solid rgba(99,102,241,0.6)'
                     : '1px solid var(--border-subtle)',
-
                   background: isActive
                     ? 'rgba(99,102,241,0.15)'
                     : 'transparent'
