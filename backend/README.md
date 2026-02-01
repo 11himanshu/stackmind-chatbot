@@ -11,7 +11,7 @@
 
 2. **Activate Virtual Environment:**
    ```bash
-   source venv/bin/activate
+   source .venv/bin/activate
    ```
 
 3. **Install Dependencies:**

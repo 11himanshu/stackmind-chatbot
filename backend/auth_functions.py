@@ -1,34 +1,73 @@
 import logging
+from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
+from jose import jwt
+from dotenv import load_dotenv
+import os   
+
+load_dotenv()
+
 from models.users import User
 
 logger = logging.getLogger(__name__)
 
+# =========================================================
+# Password hashing
+# =========================================================
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# =========================================================
+# JWT config (MOVE TO ENV LATER)
+# =========================================================
+SECRET_KEY = os.getenv("SECRET_KEY")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_HOURS = 24
 
 
 def hash_password(password: str) -> str:
+    """Hash a plain password."""
     logger.info("Hashing password")
     return pwd_context.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify plain password against hash."""
     logger.info("Verifying password")
     return pwd_context.verify(plain_password, hashed_password)
 
 
-def register_user(db: Session, username: str, password: str) -> bool:
+# =========================================================
+# JWT helpers
+# =========================================================
+def create_access_token(user_id: int) -> str:
     """
-    Register a new user in DB.
-    Returns False if username already exists.
+    Create JWT access token.
+    Stores user_id inside token payload.
+    """
+    expire = datetime.utcnow() + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
+    payload = {
+        "user_id": user_id,
+        "exp": expire
+    }
+    token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+    return token
+
+
+# =========================================================
+# User registration
+# =========================================================
+def register_user(db: Session, username: str, password: str):
+    """
+    Register a new user.
+    Returns User object or None if username exists.
     """
     logger.info(f"Attempting to register user: {username}")
 
     existing_user = db.query(User).filter(User.username == username).first()
     if existing_user:
-        logger.info(f"Registration failed: username already exists -> {username}")
-        return False
+        logger.info(f"Registration failed: username exists -> {username}")
+        return None
 
     user = User(
         username=username,
@@ -37,11 +76,15 @@ def register_user(db: Session, username: str, password: str) -> bool:
 
     db.add(user)
     db.commit()
+    db.refresh(user)
 
     logger.info(f"User registered successfully: {username}")
-    return True
+    return user
 
 
+# =========================================================
+# User authentication
+# =========================================================
 def authenticate_user(db: Session, username: str, password: str):
     """
     Authenticate user.

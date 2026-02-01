@@ -1,65 +1,109 @@
+/*
+  API Service Layer
+  -----------------
+  Responsibilities:
+  - Centralize all HTTP calls
+  - Automatically attach JWT auth headers
+  - Support JSON + streaming endpoints
+  - NEVER pass user_id from frontend (security)
+*/
+
 const API_BASE_URL = 'http://localhost:8000'
 
+/* =========================================================
+   Helper: Auth headers
+   ---------------------------------------------------------
+   IMPORTANT:
+   - Reads JWT from localStorage
+   - Attaches Authorization header ONLY if token exists
+   - Used by BOTH normal and streaming requests
+   ========================================================= */
+const authHeaders = () => {
+  const token = localStorage.getItem('token')
+
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {})
+  }
+}
+
+/* =========================================================
+   Helper: JSON fetch wrapper
+   ---------------------------------------------------------
+   Used for:
+   - login
+   - register
+   - conversations
+   Automatically:
+   - sends JWT
+   - parses JSON
+   - throws meaningful errors
+   ========================================================= */
 const fetchJSON = async (url, options = {}) => {
   const response = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
+    headers: authHeaders(),
+    ...options
   })
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}))
-    throw new Error(err.detail || `HTTP error! status: ${response.status}`)
+    throw new Error(err.detail || `HTTP error ${response.status}`)
   }
 
   return response.json()
 }
 
-/* ================= AUTH ================= */
+/* ========================= AUTH ========================= */
 
 export const register = async (username, password) => {
   return fetchJSON(`${API_BASE_URL}/auth/register`, {
     method: 'POST',
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ username, password })
   })
 }
 
 export const login = async (username, password) => {
   return fetchJSON(`${API_BASE_URL}/auth/login`, {
     method: 'POST',
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ username, password })
   })
 }
 
-/* ================= CHAT (NON-STREAM) ================= */
+/* ===================== CHAT (STREAM + SAVE) ===================== */
 
-export const sendMessage = async (message, conversationId = null) => {
-  return fetchJSON(`${API_BASE_URL}/chat`, {
-    method: 'POST',
-    body: JSON.stringify({
-      message,
-      conversation_id: conversationId
-    }),
-  })
-}
+/*
+  chatStream
+  ----------
+  SINGLE SOURCE OF TRUTH for chatting.
 
-/* ================= CHAT (STREAMING) ================= */
+  Backend:
+  - Streams assistant response
+  - Emits ONE metadata frame:
+      __META__{"conversation_id": X}
+  - Persists messages after stream completes
 
-export const streamMessage = async (
+  Frontend:
+  - Strips metadata from UI
+  - Captures conversation_id ONCE
+  - Streams ONLY assistant text to renderer
+*/
+export const chatStream = async (
   message,
   conversationId = null,
-  onChunk
+  onChunk,
+  onMeta // 👈 NEW (OPTIONAL) METADATA CALLBACK
 ) => {
-  const response = await fetch(`${API_BASE_URL}/chat/stream`, {
+  const response = await fetch(`${API_BASE_URL}/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders(), // ✅ JWT INCLUDED
     body: JSON.stringify({
       message,
       conversation_id: conversationId
-    }),
+    })
   })
 
   if (!response.ok || !response.body) {
-    throw new Error('Streaming request failed')
+    throw new Error('Chat stream failed')
   }
 
   const reader = response.body.getReader()
@@ -70,28 +114,42 @@ export const streamMessage = async (
     if (done) break
 
     const chunk = decoder.decode(value, { stream: true })
-    if (chunk) {
-      onChunk(chunk)
+    if (!chunk) continue
+
+    // =====================================================
+    // 🔥 METADATA FRAME (STRIP FROM UI)
+    // Format: __META__{"conversation_id": 42}
+    // =====================================================
+    if (chunk.startsWith('__META__')) {
+      try {
+        const meta = JSON.parse(chunk.replace('__META__', ''))
+        onMeta?.(meta)
+      } catch (e) {
+        console.error('Invalid META chunk', e)
+      }
+      continue
     }
+
+    // =====================================================
+    // 🔥 PURE ASSISTANT TEXT (SAFE FOR MARKDOWN)
+    // =====================================================
+    onChunk(chunk)
   }
 }
 
-/* ================= CONVERSATIONS ================= */
+/* ===================== CONVERSATIONS ===================== */
 
-export const fetchConversations = async (userId) => {
-  return fetchJSON(`${API_BASE_URL}/conversations?user_id=${userId}`)
+export const fetchConversations = async () => {
+  return fetchJSON(`${API_BASE_URL}/conversations`)
 }
 
-export const fetchConversationHistory = async (conversationId, userId) => {
-  return fetchJSON(
-    `${API_BASE_URL}/conversations/${conversationId}?user_id=${userId}`
-  )
+export const fetchConversationHistory = async (conversationId) => {
+  return fetchJSON(`${API_BASE_URL}/conversations/${conversationId}`)
 }
 
-
-export const deleteConversation = async (conversationId, userId) => {
+export const deleteConversation = async (conversationId) => {
   return fetchJSON(
-    `${API_BASE_URL}/conversations/${conversationId}?user_id=${userId}`,
+    `${API_BASE_URL}/conversations/${conversationId}`,
     { method: 'DELETE' }
   )
 }
