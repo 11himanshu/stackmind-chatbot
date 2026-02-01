@@ -7,12 +7,11 @@ const HEADER_HEIGHT = 64
 /*
   ChatLayout
   ----------
-  Responsibilities:
-  - Owns page-level layout (header + sidebar)
-  - Owns the SOURCE OF TRUTH for activeConversationId
-  - Controls chat reset behavior (New Chat)
-  - Receives newly-created conversation_id from ChatBot
-  - Handles global UI concerns (theme toggle, user menu)
+  FIXED & FINAL
+  - Header is FIXED (not sticky)
+  - Sidebar never hides under header
+  - Mobile keyboards do NOT move header
+  - iOS Safari safe
 */
 
 const ChatLayout = () => {
@@ -22,11 +21,11 @@ const ChatLayout = () => {
   const [activeConversationId, setActiveConversationId] = useState(null)
   const [chatResetKey, setChatResetKey] = useState(0)
 
-  // Sidebar state
+  // Sidebar
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   // =========================================================
-  // Theme state
+  // Theme
   // =========================================================
   const [theme, setTheme] = useState(
     localStorage.getItem('theme') || 'light'
@@ -38,7 +37,7 @@ const ChatLayout = () => {
   }, [theme])
 
   // =========================================================
-  // User menu state
+  // User menu
   // =========================================================
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const userMenuRef = useRef(null)
@@ -54,14 +53,13 @@ const ChatLayout = () => {
   }, [])
 
   // =========================================================
-  // Derived UI tokens
+  // Derived tokens
   // =========================================================
   const borderColor =
     theme === 'dark'
       ? 'rgba(255,255,255,0.35)'
       : 'rgba(0,0,0,0.35)'
 
-  // TEMP user
   const user =
     JSON.parse(localStorage.getItem('user')) || { username: 'hima' }
 
@@ -80,10 +78,12 @@ const ChatLayout = () => {
         overflow: 'hidden'
       }}
     >
-      {/* ================= FIXED HEADER (DO NOT SCROLL) ================= */}
+      {/* =====================================================
+         FIXED HEADER — NEVER SCROLLS (NO STICKY)
+         ===================================================== */}
       <header
         style={{
-          position: 'fixed',            // ✅ CRITICAL FIX
+          position: 'fixed',
           top: 0,
           left: 0,
           right: 0,
@@ -99,7 +99,7 @@ const ChatLayout = () => {
           zIndex: 1000
         }}
       >
-        {/* ===== Left ===== */}
+        {/* Left */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button
             onClick={() => setSidebarOpen(prev => !prev)}
@@ -131,9 +131,8 @@ const ChatLayout = () => {
           </div>
         </div>
 
-        {/* ===== Right ===== */}
+        {/* Right */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {/* Theme toggle */}
           <button
             onClick={() =>
               setTheme(prev => (prev === 'dark' ? 'light' : 'dark'))
@@ -152,7 +151,6 @@ const ChatLayout = () => {
             {theme === 'dark' ? '☀️' : '🌙'}
           </button>
 
-          {/* User menu */}
           <div ref={userMenuRef} style={{ position: 'relative' }}>
             <button
               onClick={() => setUserMenuOpen(prev => !prev)}
@@ -228,11 +226,13 @@ const ChatLayout = () => {
         </div>
       </header>
 
-      {/* ================= CONTENT BELOW HEADER ================= */}
+      {/* =====================================================
+         CONTENT BELOW HEADER (OFFSET FIX)
+         ===================================================== */}
       <div
         style={{
-          paddingTop: HEADER_HEIGHT,   // ✅ PREVENT OVERLAP
-          height: '100%',
+          paddingTop: HEADER_HEIGHT,
+          height: `calc(100dvh - ${HEADER_HEIGHT}px)`,
           display: 'flex',
           overflow: 'hidden'
         }}
@@ -251,9 +251,7 @@ const ChatLayout = () => {
         <ChatBot
           key={chatResetKey}
           activeConversationId={activeConversationId}
-          onConversationCreated={(id) => {
-            setActiveConversationId(id)
-          }}
+          onConversationCreated={setActiveConversationId}
         />
       </div>
     </div>
