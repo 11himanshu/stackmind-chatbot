@@ -21,3 +21,4 @@ markdown-it-py
 mdurl
 sseclient-py
 python-jose[cryptography]
+passlib[bcrypt]
