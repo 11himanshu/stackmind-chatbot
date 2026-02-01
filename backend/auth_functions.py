@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 from jose import jwt
 from dotenv import load_dotenv
-import os   
+import os
 
 load_dotenv()
 
@@ -13,29 +13,45 @@ from models.users import User
 logger = logging.getLogger(__name__)
 
 # =========================================================
-# Password hashing
+# Password hashing (bcrypt-safe, Python 3.13 safe)
 # =========================================================
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(
+    schemes=["bcrypt"],
+    deprecated="auto"
+)
 
-# =========================================================
-# JWT config (MOVE TO ENV LATER)
-# =========================================================
-SECRET_KEY = os.getenv("SECRET_KEY")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_HOURS = 24
+def _normalize_password(password: str) -> bytes:
+    """
+    bcrypt has a strict 72-byte limit.
+    We MUST normalize passwords to avoid runtime crashes.
+    This is standard practice and does NOT weaken security.
+    """
+    password_bytes = password.encode("utf-8")
+    if len(password_bytes) > 72:
+        password_bytes = password_bytes[:72]
+    return password_bytes
 
 
 def hash_password(password: str) -> str:
-    """Hash a plain password."""
     logger.info("Hashing password")
-    return pwd_context.hash(password)
+    password_bytes = _normalize_password(password)
+    return pwd_context.hash(password_bytes)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify plain password against hash."""
     logger.info("Verifying password")
-    return pwd_context.verify(plain_password, hashed_password)
+    password_bytes = _normalize_password(plain_password)
+    return pwd_context.verify(password_bytes, hashed_password)
 
+# =========================================================
+# JWT config
+# =========================================================
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("SECRET_KEY is not set in environment variables")
+
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_HOURS = 24
 
 # =========================================================
 # JWT helpers
@@ -52,7 +68,6 @@ def create_access_token(user_id: int) -> str:
     }
     token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
     return token
-
 
 # =========================================================
 # User registration
@@ -80,7 +95,6 @@ def register_user(db: Session, username: str, password: str):
 
     logger.info(f"User registered successfully: {username}")
     return user
-
 
 # =========================================================
 # User authentication
