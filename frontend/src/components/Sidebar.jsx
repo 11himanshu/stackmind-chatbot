@@ -6,13 +6,16 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
   const [isMobile, setIsMobile] = useState(false)
 
   // =========================================================
-  // Detect mobile
+  // Detect mobile (FIXED: iOS-safe)
   // =========================================================
   useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth <= 768)
-    check()
-    window.addEventListener('resize', check)
-    return () => window.removeEventListener('resize', check)
+    const media = window.matchMedia('(max-width: 768px)')
+
+    const update = () => setIsMobile(media.matches)
+    update()
+
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
   }, [])
 
   // =========================================================
