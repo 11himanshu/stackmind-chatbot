@@ -6,14 +6,12 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
   const [isMobile, setIsMobile] = useState(false)
 
   // =========================================================
-  // Detect mobile (FIXED: iOS-safe)
+  // Detect mobile (iOS-safe)
   // =========================================================
   useEffect(() => {
     const media = window.matchMedia('(max-width: 768px)')
-
     const update = () => setIsMobile(media.matches)
     update()
-
     media.addEventListener('change', update)
     return () => media.removeEventListener('change', update)
   }, [])
@@ -45,17 +43,14 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
   }
 
   const handleNewChat = () => {
-    // New chat = close sidebar + clear active conversation
     onSelectConversation(null)
   }
 
   const handleSelect = (id) => {
-    // Selecting conversation also closes sidebar (mobile)
     onSelectConversation(id)
   }
 
   const handleClose = () => {
-    // Close sidebar WITHOUT changing conversation
     onSelectConversation(activeConversationId)
   }
 
@@ -69,20 +64,10 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
             position: 'fixed',
             inset: 0,
             background: 'rgba(0,0,0,0.45)',
-            zIndex: 39
+            zIndex: 49
           }}
         />
       )}
-
-      {/* ================= Slide-in animation ================= */}
-      <style>
-        {`
-          @keyframes sidebarSlideIn {
-            from { transform: translateX(-100%); }
-            to { transform: translateX(0); }
-          }
-        `}
-      </style>
 
       {/* ================= Sidebar ================= */}
       <div
@@ -90,40 +75,38 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
           position: isMobile ? 'fixed' : 'relative',
           top: 0,
           left: 0,
-
           width: 300,
           maxWidth: '85vw',
           height: isMobile ? '100dvh' : 'calc(100vh - 24px)',
           margin: isMobile ? 0 : 12,
-
           background: 'var(--bg-input)',
           borderRight: '1px solid var(--border-strong)',
           borderRadius: isMobile ? '0 18px 18px 0' : 18,
-
           boxShadow: 'var(--shadow-medium)',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
-
-          zIndex: 40,
-          animation: isMobile
-            ? 'sidebarSlideIn 0.35s cubic-bezier(0.4,0,0.2,1)'
-            : 'none'
+          zIndex: 50
         }}
       >
-        {/* ================= Header ================= */}
+        {/* ================= STICKY HEADER (FIX) ================= */}
         <div
           style={{
+            position: 'sticky',
+            top: 0,
+            zIndex: 60,
             padding: 14,
+            paddingTop: 'calc(14px + env(safe-area-inset-top))',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
+            background: 'var(--bg-input)',
             borderBottom: '1px solid var(--border-strong)'
           }}
         >
           <strong style={{ fontSize: 14 }}>Conversations</strong>
 
-          {/* ✕ Close (mobile only) */}
+          {/* ✕ Close (mobile only — ALWAYS visible now) */}
           {isMobile && (
             <button
               onClick={handleClose}
@@ -132,8 +115,9 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
                 background: 'transparent',
                 border: 'none',
                 color: 'var(--text-primary)',
-                fontSize: 22,
-                cursor: 'pointer'
+                fontSize: 24,
+                cursor: 'pointer',
+                lineHeight: 1
               }}
             >
               ✕
@@ -202,7 +186,6 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   gap: 10,
-
                   cursor: 'pointer',
                   borderRadius: 12,
                   border: isActive
@@ -228,10 +211,7 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
 
                 <span
                   onClick={(e) => handleDelete(e, c.id)}
-                  style={{
-                    cursor: 'pointer',
-                    opacity: 0.7
-                  }}
+                  style={{ cursor: 'pointer', opacity: 0.7 }}
                 >
                   🗑
                 </span>
