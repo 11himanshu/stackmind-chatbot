@@ -28,16 +28,16 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   const sentenceBufferRef = useRef('')
 
   // =========================================================
-  // Auto focus helper (mobile-safe)
+  // Auto focus (SAFE: no scroll jump)
   // =========================================================
   const focusInput = () => {
-    setTimeout(() => {
+    requestAnimationFrame(() => {
       inputRef.current?.focus({ preventScroll: true })
-    }, 120)
+    })
   }
 
   // =========================================================
-  // Scroll
+  // Scroll ONLY messages container
   // =========================================================
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -65,7 +65,7 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   }, [activeConversationId])
 
   // =========================================================
-  // Welcome message (brand new chat)
+  // Welcome message
   // =========================================================
   useEffect(() => {
     if (activeConversationId !== null) return
@@ -105,7 +105,7 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   }, [activeConversationId])
 
   // =========================================================
-  // Auto-scroll
+  // Auto-scroll messages ONLY
   // =========================================================
   useEffect(() => {
     scrollToBottom()
@@ -114,7 +114,7 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   const sleep = (ms) => new Promise(r => setTimeout(r, ms))
 
   // =========================================================
-  // Streaming processor
+  // Streaming processor (UNCHANGED)
   // =========================================================
   const processQueue = async (assistantIndex) => {
     if (isProcessingRef.current) return
@@ -260,7 +260,7 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   }
 
   // =========================================================
-  // UI
+  // UI (STRUCTURE FIXED)
   // =========================================================
   return (
     <div className="chatbot-container">

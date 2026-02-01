@@ -17,6 +17,9 @@
   background: var(--bg-surface);
 
   font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* 🚫 Prevent page scroll on mobile keyboards */
+  overscroll-behavior: none;
 }
 
 /* =========================================================
@@ -38,6 +41,8 @@
   background: var(--bg-messages);
 
   scroll-behavior: smooth;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* =========================================================
@@ -130,19 +135,15 @@
 
 /* ================= Assistant Message ==================== */
 .message.assistant .message-content {
-  /* 🔥 THEME-AWARE */
   background: var(--bg-assistant);
   color: var(--text-primary);
-
   border-bottom-left-radius: 6px;
 }
 
 /* ================= User Message ========================= */
 .message.user .message-content {
-  /* 🔥 THEME-AWARE */
   background: var(--bg-user);
   color: var(--text-inverse);
-
   border-bottom-right-radius: 6px;
 }
 
@@ -171,7 +172,6 @@
    Code Blocks
    ========================================================= */
 .message-content pre {
-  /* 🔥 THEME-AWARE */
   background: var(--code-bg);
   color: var(--text-inverse);
 
@@ -203,20 +203,27 @@
 }
 
 /* =========================================================
-   Input Area (PINNED TO BOTTOM)
+   Input Area (PINNED + KEYBOARD SAFE)
    ---------------------------------------------------------
-   - flex-shrink: 0 prevents it from collapsing
+   - Does NOT scroll
+   - Respects iOS safe-area
+   - Does NOT push header away
    ========================================================= */
 .input-container {
   flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 20px 26px;
 
-  /* 🔥 THEME-AWARE */
+  padding: 20px 26px;
+  padding-bottom: calc(20px + env(safe-area-inset-bottom));
+
   background: var(--bg-input);
   border-top: 1px solid var(--border-subtle);
+
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
 }
 
 /* Text input */
@@ -229,7 +236,6 @@
   font-size: 16px;
   outline: none;
 
-  /* 🔥 THEME-AWARE */
   background: var(--bg-input);
   color: var(--text-primary);
 }
@@ -253,7 +259,6 @@
   height: 54px;
   border-radius: 50%;
 
-  /* 🔥 THEME-AWARE */
   background: var(--bg-user);
   color: var(--text-inverse);
 
@@ -283,8 +288,6 @@
   font-weight: 700;
   margin-top: 18px;
   margin-bottom: 8px;
-
-  /* 🔥 THEME-AWARE */
   color: var(--text-primary);
 }
 
@@ -293,8 +296,6 @@
   font-weight: 600;
   margin-top: 14px;
   margin-bottom: 6px;
-
-  /* 🔥 THEME-AWARE */
   color: var(--text-secondary);
 }
 
@@ -322,7 +323,7 @@
 }
 
 /* =========================================================
-   USER MESSAGE OVERRIDES (UNCHANGED LOGIC)
+   USER MESSAGE OVERRIDES
    ========================================================= */
 .message.user .msg-heading,
 .message.user .msg-subheading,
