@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react'
 import Sidebar from '../components/Sidebar'
 import ChatBot from '../components/ChatBot'
 
+const HEADER_HEIGHT = 64
+
 /*
   ChatLayout
   ----------
@@ -18,8 +20,6 @@ const ChatLayout = () => {
   // Active conversation
   // =========================================================
   const [activeConversationId, setActiveConversationId] = useState(null)
-
-  // Force ChatBot remount when user explicitly switches chat
   const [chatResetKey, setChatResetKey] = useState(0)
 
   // Sidebar state
@@ -68,197 +68,186 @@ const ChatLayout = () => {
   const handleLogout = () => {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
-
-    // ✅ FIX: avoid SPA hard refresh issues
     window.location.replace('/login')
   }
 
   return (
     <div
       style={{
-        display: 'flex',
         height: '100dvh',
         width: '100%',
         background: 'var(--bg-surface)',
         overflow: 'hidden'
       }}
     >
-      {/* ================= Sidebar ================= */}
-      {sidebarOpen && (
-        <Sidebar
-          activeConversationId={activeConversationId}
-          onSelectConversation={(id) => {
-            setActiveConversationId(id)
-            setChatResetKey(prev => prev + 1)
-            setSidebarOpen(false)
-          }}
-        />
-      )}
-
-      {/* ================= Main Column ================= */}
-      <div
+      {/* ================= FIXED HEADER (DO NOT SCROLL) ================= */}
+      <header
         style={{
-          flex: 1,
-          minWidth: 0,
+          position: 'fixed',            // ✅ CRITICAL FIX
+          top: 0,
+          left: 0,
+          right: 0,
+          height: HEADER_HEIGHT,
+          padding: '0 16px',
           display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden'
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          background: 'var(--bg-input)',
+          borderBottom: `1px solid ${borderColor}`,
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          zIndex: 1000
         }}
       >
-        {/* ================= Header ================= */}
-        <header
-          style={{
-            position: 'sticky', // ✅ FIX: header always visible
-            top: 0,
-            height: 64,
-            padding: '0 16px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexShrink: 0,
-            background: 'var(--bg-input)',
-            borderBottom: `1px solid ${borderColor}`,
-            backdropFilter: 'blur(12px)',
-            WebkitBackdropFilter: 'blur(12px)',
-            zIndex: 100
-          }}
-        >
-          {/* ===== Left ===== */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <button
-              onClick={() => setSidebarOpen(prev => !prev)}
-              aria-label="Toggle sidebar"
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 10,
-                border: `1px solid ${borderColor}`,
-                background: 'var(--bg-input)',
-                cursor: 'pointer',
-                fontSize: 18,
-                color: 'var(--menu-icon-color)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-            >
-              ☰
-            </button>
+        {/* ===== Left ===== */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button
+            onClick={() => setSidebarOpen(prev => !prev)}
+            aria-label="Toggle sidebar"
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              border: `1px solid ${borderColor}`,
+              background: 'var(--bg-input)',
+              cursor: 'pointer',
+              fontSize: 18,
+              color: 'var(--menu-icon-color)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            ☰
+          </button>
 
-            <div style={{ lineHeight: 1.1 }}>
-              <div style={{ fontWeight: 700, fontSize: 15 }}>
-                StackMind
-              </div>
-              <div style={{ fontSize: 11, opacity: 0.65 }}>
-                Powered by Himanshu
-              </div>
+          <div style={{ lineHeight: 1.1 }}>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>
+              StackMind
+            </div>
+            <div style={{ fontSize: 11, opacity: 0.65 }}>
+              Powered by Himanshu
             </div>
           </div>
+        </div>
 
-          {/* ===== Right ===== */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {/* Theme toggle */}
+        {/* ===== Right ===== */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* Theme toggle */}
+          <button
+            onClick={() =>
+              setTheme(prev => (prev === 'dark' ? 'light' : 'dark'))
+            }
+            aria-label="Toggle theme"
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: '50%',
+              border: `1px solid ${borderColor}`,
+              background: 'var(--bg-input)',
+              cursor: 'pointer',
+              fontSize: 16
+            }}
+          >
+            {theme === 'dark' ? '☀️' : '🌙'}
+          </button>
+
+          {/* User menu */}
+          <div ref={userMenuRef} style={{ position: 'relative' }}>
             <button
-              onClick={() =>
-                setTheme(prev => (prev === 'dark' ? 'light' : 'dark'))
-              }
-              aria-label="Toggle theme"
+              onClick={() => setUserMenuOpen(prev => !prev)}
               style={{
-                width: 36,
-                height: 36,
-                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '4px 8px',
+                borderRadius: 999,
                 border: `1px solid ${borderColor}`,
                 background: 'var(--bg-input)',
-                cursor: 'pointer',
-                fontSize: 16
+                cursor: 'pointer'
               }}
             >
-              {theme === 'dark' ? '☀️' : '🌙'}
-            </button>
-
-            {/* User menu */}
-            <div ref={userMenuRef} style={{ position: 'relative' }}>
-              <button
-                onClick={() => setUserMenuOpen(prev => !prev)}
+              <div
                 style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: '50%',
+                  background: '#22c55e',
+                  color: '#0f172a',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 6,
-                  padding: '4px 8px',
-                  borderRadius: 999,
-                  border: `1px solid ${borderColor}`,
+                  justifyContent: 'center',
+                  fontWeight: 700,
+                  fontSize: 13
+                }}
+              >
+                {user.username.charAt(0).toUpperCase()}
+              </div>
+              <span style={{ fontSize: 13 }}>▾</span>
+            </button>
+
+            {userMenuOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: 'calc(100% + 8px)',
+                  minWidth: 160,
                   background: 'var(--bg-input)',
-                  cursor: 'pointer'
+                  border: `1px solid ${borderColor}`,
+                  borderRadius: 12,
+                  boxShadow: '0 12px 30px rgba(0,0,0,0.18)',
+                  padding: 8,
+                  zIndex: 2000
                 }}
               >
                 <div
                   style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: '50%',
-                    background: '#22c55e',
-                    color: '#0f172a',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontWeight: 700,
-                    fontSize: 13
+                    padding: '8px 10px',
+                    fontSize: 13,
+                    opacity: 0.7
                   }}
                 >
-                  {user.username.charAt(0).toUpperCase()}
+                  {user.username}
                 </div>
-                <span style={{ fontSize: 13 }}>▾</span>
-              </button>
 
-              {userMenuOpen && (
                 <div
+                  onClick={handleLogout}
                   style={{
-                    position: 'absolute',
-                    right: 0,
-                    top: 'calc(100% + 8px)',
-                    minWidth: 160,
-                    background: 'var(--bg-input)',
-                    border: `1px solid ${borderColor}`,
-                    borderRadius: 12,
-                    boxShadow: '0 12px 30px rgba(0,0,0,0.18)',
-                    padding: 8,
-                    zIndex: 200
+                    padding: '8px 10px',
+                    cursor: 'pointer',
+                    fontSize: 13,
+                    borderRadius: 8
                   }}
                 >
-                  <div
-                    style={{
-                      padding: '8px 10px',
-                      fontSize: 13,
-                      opacity: 0.7
-                    }}
-                  >
-                    {user.username}
-                  </div>
-
-                  <div
-                    onClick={handleLogout}
-                    style={{
-                      padding: '8px 10px',
-                      cursor: 'pointer',
-                      fontSize: 13,
-                      borderRadius: 8
-                    }}
-                    onMouseEnter={(e) =>
-                      (e.currentTarget.style.background = 'rgba(0,0,0,0.06)')
-                    }
-                    onMouseLeave={(e) =>
-                      (e.currentTarget.style.background = 'transparent')
-                    }
-                  >
-                    🚪 Logout
-                  </div>
+                  🚪 Logout
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
-        </header>
+        </div>
+      </header>
 
-        {/* ================= Chat Content ================= */}
+      {/* ================= CONTENT BELOW HEADER ================= */}
+      <div
+        style={{
+          paddingTop: HEADER_HEIGHT,   // ✅ PREVENT OVERLAP
+          height: '100%',
+          display: 'flex',
+          overflow: 'hidden'
+        }}
+      >
+        {sidebarOpen && (
+          <Sidebar
+            activeConversationId={activeConversationId}
+            onSelectConversation={(id) => {
+              setActiveConversationId(id)
+              setChatResetKey(prev => prev + 1)
+              setSidebarOpen(false)
+            }}
+          />
+        )}
+
         <ChatBot
           key={chatResetKey}
           activeConversationId={activeConversationId}

@@ -37,6 +37,18 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   }
 
   // =========================================================
+  // Auto-grow textarea (KEY FIX)
+  // =========================================================
+  const autoResizeTextarea = () => {
+    const el = inputRef.current
+    if (!el) return
+
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+    el.style.overflowY = 'hidden'
+  }
+
+  // =========================================================
   // Scroll ONLY messages container
   // =========================================================
   const scrollToBottom = () => {
@@ -58,6 +70,8 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
 
       setIsStreaming(false)
       setMessages([])
+      setInputMessage('')
+      requestAnimationFrame(autoResizeTextarea)
       focusInput()
     }
 
@@ -65,7 +79,7 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   }, [activeConversationId])
 
   // =========================================================
-  // Welcome message (brand new chat)
+  // Welcome message
   // =========================================================
   useEffect(() => {
     if (activeConversationId !== null) return
@@ -83,7 +97,7 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   }, [activeConversationId])
 
   // =========================================================
-  // Load conversation history
+  // Load history
   // =========================================================
   useEffect(() => {
     if (!activeConversationId) return
@@ -114,7 +128,7 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   const sleep = (ms) => new Promise(r => setTimeout(r, ms))
 
   // =========================================================
-  // Streaming processor
+  // Streaming processor (UNCHANGED)
   // =========================================================
   const processQueue = async (assistantIndex) => {
     if (isProcessingRef.current) return
@@ -214,6 +228,8 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
     setLoading(true)
     setIsStreaming(true)
 
+    requestAnimationFrame(autoResizeTextarea)
+
     setMessages(prev => [
       ...prev,
       { role: 'user', message: userMessage, timestamp: new Date() }
@@ -290,10 +306,19 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
           ref={inputRef}
           className="message-input"
           value={inputMessage}
-          onChange={(e) => setInputMessage(e.target.value)}
           placeholder="Ask StackMind…"
           disabled={loading}
           rows={1}
+          onChange={(e) => {
+            setInputMessage(e.target.value)
+            autoResizeTextarea()
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              handleSend(e)
+            }
+          }}
         />
 
         <button
