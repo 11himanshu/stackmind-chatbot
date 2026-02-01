@@ -8,20 +8,22 @@
 }
 
 /* =========================================================
-   ROOT
+   ROOT — MOBILE SAFE (CRITICAL FIX)
    ========================================================= */
 html,
 body,
 #root {
   width: 100%;
   height: 100%;
+  overflow: hidden;               /* 🔥 LOCK PAGE SCROLL */
 }
 
-@supports (height: 100dvh) {
+/* iOS / Android keyboard-safe viewport */
+@supports (height: 100svh) {
   html,
   body,
   #root {
-    height: 100dvh;
+    height: 100svh;               /* 🔥 FIXES KEYBOARD PUSH */
   }
 }
 
@@ -47,14 +49,12 @@ body,
   --text-secondary: #6b7280;
   --text-inverse: #ffffff;
 
-  /* Borders */
   --border-subtle: rgba(0, 0, 0, 0.18);
   --border-strong: rgba(0, 0, 0, 0.35);
 
   --shadow-soft: 0 6px 18px rgba(0, 0, 0, 0.08);
   --shadow-medium: 0 12px 28px rgba(0, 0, 0, 0.14);
 
-  /* Header */
   --header-bg: linear-gradient(
     180deg,
     rgba(255, 255, 255, 0.95),
@@ -63,7 +63,6 @@ body,
   --header-text: var(--text-primary);
   --header-pill-bg: rgba(255, 255, 255, 0.9);
 
-  /* Menu icon */
   --menu-icon-color: #111827;
 }
 
@@ -107,13 +106,16 @@ html[data-theme='dark'] {
 }
 
 /* =========================================================
-   BODY
+   BODY — HARD MOBILE LOCK
    ========================================================= */
 body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   background: var(--bg-app);
   color: var(--text-primary);
-  overflow: hidden;
+
+  overflow: hidden;               /* 🔥 PREVENT SCROLL */
+  overscroll-behavior: none;      /* 🔥 KILL iOS BOUNCE */
+  touch-action: manipulation;     /* 🔥 KEYBOARD SAFE */
 
   transition:
     background-color 0.25s ease,
@@ -121,12 +123,12 @@ body {
 }
 
 /* =========================================================
-   HEADER (GLOBAL) — 🔥 FIXED
+   HEADER — MUST NEVER MOVE
    ========================================================= */
 header {
-  position: sticky;      /* ✅ KEY FIX */
-  top: 0;                /* ✅ Always visible */
-  z-index: 30;
+  position: sticky;               /* 🔥 CRITICAL */
+  top: 0;
+  z-index: 50;
 
   background: var(--header-bg);
   color: var(--header-text);
@@ -168,25 +170,28 @@ header button {
 }
 
 /* =========================================================
-   CHAT CONTAINER
+   CHAT LAYOUT SAFETY
    ========================================================= */
 .chatbot-container {
-  background: var(--bg-surface);
-  height: 100%;
+  flex: 1;
+  min-height: 0;                  /* 🔥 REQUIRED */
   display: flex;
   flex-direction: column;
+  background: var(--bg-surface);
 }
 
 .messages-container {
-  background: var(--bg-messages);
   flex: 1;
+  min-height: 0;                  /* 🔥 ONLY SCROLL AREA */
   overflow-y: auto;
+  background: var(--bg-messages);
 }
 
 /* =========================================================
-   INPUT AREA
+   INPUT AREA — PINNED
    ========================================================= */
 .input-container {
+  flex-shrink: 0;                 /* 🔥 PREVENT PUSH */
   background: var(--bg-input);
   border-top: 1px solid var(--border-strong);
   box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.06);

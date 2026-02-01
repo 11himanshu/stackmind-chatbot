@@ -65,7 +65,7 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   }, [activeConversationId])
 
   // =========================================================
-  // Welcome message
+  // Welcome message (brand new chat)
   // =========================================================
   useEffect(() => {
     if (activeConversationId !== null) return
@@ -83,7 +83,7 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   }, [activeConversationId])
 
   // =========================================================
-  // Load history
+  // Load conversation history
   // =========================================================
   useEffect(() => {
     if (!activeConversationId) return
@@ -105,7 +105,7 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   }, [activeConversationId])
 
   // =========================================================
-  // Auto-scroll messages ONLY
+  // Auto-scroll messages only
   // =========================================================
   useEffect(() => {
     scrollToBottom()
@@ -114,7 +114,7 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   const sleep = (ms) => new Promise(r => setTimeout(r, ms))
 
   // =========================================================
-  // Streaming processor (UNCHANGED)
+  // Streaming processor
   // =========================================================
   const processQueue = async (assistantIndex) => {
     if (isProcessingRef.current) return
@@ -260,7 +260,7 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   }
 
   // =========================================================
-  // UI (STRUCTURE FIXED)
+  // UI
   // =========================================================
   return (
     <div className="chatbot-container">
@@ -286,13 +286,14 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
       </div>
 
       <form className="input-container" onSubmit={handleSend}>
-        <input
+        <textarea
           ref={inputRef}
           className="message-input"
           value={inputMessage}
           onChange={(e) => setInputMessage(e.target.value)}
           placeholder="Ask StackMind…"
           disabled={loading}
+          rows={1}
         />
 
         <button
