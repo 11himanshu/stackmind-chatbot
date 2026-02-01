@@ -8,7 +8,7 @@
   - NEVER pass user_id from frontend (security)
 */
 
-const API_BASE_URL = 'https://stackmind-chatbot.onrender.com'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 
 /* =========================================================
    Helper: Auth headers
