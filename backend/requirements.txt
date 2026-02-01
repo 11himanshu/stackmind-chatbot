@@ -19,4 +19,5 @@ pydantic-settings
 markdown
 markdown-it-py
 mdurl
-sseclient-py   
+sseclient-py
+python-jose[cryptography]
