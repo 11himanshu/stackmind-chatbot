@@ -1,7 +1,7 @@
 /* =========================================================
    ChatBot Root Container
    ---------------------------------------------------------
-   IMPORTANT FIX:
+   IMPORTANT FIX (UNCHANGED):
    - DO NOT use height: 100%
    - ChatLayout already owns the vertical space
    - ChatBot must flex-grow into remaining height
@@ -12,7 +12,10 @@
   min-width: 0;            /* prevent horizontal overflow */
   display: flex;
   flex-direction: column;
-  background: #eef1f5;
+
+  /* 🔥 THEME-AWARE BACKGROUND */
+  background: var(--bg-surface);
+
   font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
@@ -30,9 +33,10 @@
   display: flex;
   flex-direction: column;
   gap: 24px;
-  background:
-    radial-gradient(circle at top, rgba(36, 59, 85, 0.04), transparent 40%),
-    #f0f2f5;
+
+  /* 🔥 THEME-AWARE BACKGROUND */
+  background: var(--bg-messages);
+
   scroll-behavior: smooth;
 }
 
@@ -83,7 +87,10 @@
 .message-avatar svg {
   width: 28px;
   height: 28px;
+
+  /* 🔥 THEME-AWARE AVATAR BACKGROUND */
   background: rgba(36, 59, 85, 0.12);
+
   border-radius: 8px;
   padding: 4px;
 }
@@ -121,18 +128,25 @@
   animation: messageIn 0.18s ease-out;
 }
 
+/* ================= Assistant Message ==================== */
 .message.assistant .message-content {
-  background: linear-gradient(180deg, #ffffff, #f9fafb);
-  color: #2d2d2d;
+  /* 🔥 THEME-AWARE */
+  background: var(--bg-assistant);
+  color: var(--text-primary);
+
   border-bottom-left-radius: 6px;
 }
 
+/* ================= User Message ========================= */
 .message.user .message-content {
-  background: linear-gradient(135deg, #141e30, #243b55);
-  color: white;
+  /* 🔥 THEME-AWARE */
+  background: var(--bg-user);
+  color: var(--text-inverse);
+
   border-bottom-right-radius: 6px;
 }
 
+/* ================= Error Message ======================== */
 .message.error .message-content {
   background: #ffe5e5;
   color: #b00020;
@@ -157,8 +171,10 @@
    Code Blocks
    ========================================================= */
 .message-content pre {
-  background: #0f172a;
-  color: #e5e7eb;
+  /* 🔥 THEME-AWARE */
+  background: var(--code-bg);
+  color: var(--text-inverse);
+
   padding: 14px 16px;
   border-radius: 12px;
   overflow-x: auto;
@@ -197,8 +213,10 @@
   align-items: center;
   gap: 14px;
   padding: 20px 26px;
-  background: #ffffff;
-  border-top: 1px solid #dcdcdc;
+
+  /* 🔥 THEME-AWARE */
+  background: var(--bg-input);
+  border-top: 1px solid var(--border-subtle);
 }
 
 /* Text input */
@@ -207,9 +225,17 @@
   min-height: 56px;
   padding: 14px 20px;
   border-radius: 28px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-subtle);
   font-size: 16px;
   outline: none;
+
+  /* 🔥 THEME-AWARE */
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+
+.message-input::placeholder {
+  color: var(--text-secondary);
 }
 
 .message-input:focus {
@@ -226,8 +252,11 @@
   width: 54px;
   height: 54px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #141e30, #243b55);
-  color: white;
+
+  /* 🔥 THEME-AWARE */
+  background: var(--bg-user);
+  color: var(--text-inverse);
+
   border: none;
   display: flex;
   align-items: center;
@@ -243,7 +272,7 @@
 }
 
 .send-button svg {
-  stroke: white;
+  stroke: currentColor;
 }
 
 /* =========================================================
@@ -254,7 +283,9 @@
   font-weight: 700;
   margin-top: 18px;
   margin-bottom: 8px;
-  color: #0f172a;
+
+  /* 🔥 THEME-AWARE */
+  color: var(--text-primary);
 }
 
 .msg-subheading {
@@ -262,13 +293,15 @@
   font-weight: 600;
   margin-top: 14px;
   margin-bottom: 6px;
-  color: #1f2937;
+
+  /* 🔥 THEME-AWARE */
+  color: var(--text-secondary);
 }
 
 .msg-line {
   font-size: 14.5px;
   line-height: 1.65;
-  color: #2d2d2d;
+  color: var(--text-primary);
 }
 
 .msg-bullet {
@@ -277,7 +310,7 @@
   margin-left: 16px;
   font-size: 14.5px;
   line-height: 1.6;
-  color: #2d2d2d;
+  color: var(--text-primary);
 }
 
 .bullet-dot {
@@ -289,14 +322,14 @@
 }
 
 /* =========================================================
-   USER MESSAGE OVERRIDES
+   USER MESSAGE OVERRIDES (UNCHANGED LOGIC)
    ========================================================= */
 .message.user .msg-heading,
 .message.user .msg-subheading,
 .message.user .msg-line,
 .message.user .msg-bullet,
 .message.user .bullet-dot {
-  color: #ffffff;
+  color: var(--text-inverse);
 }
 
 .message.user .msg-subheading {
