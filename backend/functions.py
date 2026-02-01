@@ -283,20 +283,14 @@ def list_user_conversations(
 # ============================================================
 # DELETE CONVERSATION
 # ============================================================
-
 def delete_conversation(
     db: Session,
     user_id: int,
     conversation_id: int
 ) -> bool:
-    """
-    Delete conversation AND all associated messages.
-
-    IMPORTANT:
-    - Messages must be deleted FIRST
-    - Conversation must be deleted LAST
-    - This avoids foreign key violations
-    """
+    db.query(Message).filter(
+        Message.conversation_id == conversation_id
+    ).delete(synchronize_session=False)
 
     conversation = (
         db.query(Conversation)
@@ -310,13 +304,6 @@ def delete_conversation(
     if not conversation:
         return False
 
-    # 🔥 DELETE CHILD ROWS FIRST (CRITICAL FIX)
-    db.query(Message).filter(
-        Message.conversation_id == conversation.id
-    ).delete(synchronize_session=False)
-
-    # 🔥 THEN DELETE THE CONVERSATION
     db.delete(conversation)
-
     db.commit()
     return True

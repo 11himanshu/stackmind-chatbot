@@ -103,23 +103,31 @@ async def get_conversation(
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
+    conversation = (
+        db.query(Conversation)
+        .filter(
+            Conversation.id == conversation_id,
+            Conversation.user_id == user_id
+        )
+        .first()
+    )
+
+    if not conversation:
+        raise HTTPException(
+            status_code=404,
+            detail="Conversation not found"
+        )
+
     messages = get_conversation_history(
         db=db,
         user_id=user_id,
         conversation_id=conversation_id
     )
 
-    if not messages:
-        raise HTTPException(
-            status_code=404,
-            detail="Conversation not found"
-        )
-
     return {
         "conversation_id": conversation_id,
         "messages": messages
     }
-
 
 # ============================================================
 # LIST CONVERSATIONS (SIDEBAR)

@@ -5,30 +5,19 @@ import './ChatBot.css'
 
 const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   // =========================================================
-  // UI state
+  // Core state (SINGLE SOURCE OF TRUTH)
   // =========================================================
   const [messages, setMessages] = useState([])
   const [inputMessage, setInputMessage] = useState('')
   const [loading, setLoading] = useState(false)
-  const [isStreaming, setIsStreaming] = useState(false)
 
-  // =========================================================
-  // Conversation id reference
-  // =========================================================
   const conversationIdRef = useRef(activeConversationId)
-
-  // =========================================================
-  // Refs
-  // =========================================================
+  const streamingIdRef = useRef(null)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
 
-  const chunkQueueRef = useRef([])
-  const isProcessingRef = useRef(false)
-  const sentenceBufferRef = useRef('')
-
   // =========================================================
-  // Auto focus (SAFE: no scroll jump)
+  // Focus input safely
   // =========================================================
   const focusInput = () => {
     requestAnimationFrame(() => {
@@ -37,133 +26,63 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   }
 
   // =========================================================
-  // Auto-grow textarea (KEY FIX)
+  // Scroll to bottom
   // =========================================================
-  const autoResizeTextarea = () => {
-    const el = inputRef.current
-    if (!el) return
-
-    el.style.height = 'auto'
-    el.style.height = `${el.scrollHeight}px`
-    el.style.overflowY = 'hidden'
-  }
-
-  // =========================================================
-  // Scroll ONLY messages container
-  // =========================================================
-  const scrollToBottom = () => {
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
+  }, [messages])
 
   // =========================================================
-  // Reset ONLY on user conversation switch
+  // Handle conversation changes (FINAL LOGIC)
   // =========================================================
   useEffect(() => {
-    const isUserSwitch =
-      conversationIdRef.current !== null &&
-      conversationIdRef.current !== activeConversationId
+    const previousId = conversationIdRef.current
 
-    if (isUserSwitch) {
-      chunkQueueRef.current = []
-      sentenceBufferRef.current = ''
-      isProcessingRef.current = false
-
-      setIsStreaming(false)
+    // 1️⃣ New Chat (id → null)
+    if (previousId && activeConversationId === null) {
+      conversationIdRef.current = null
+      streamingIdRef.current = null
       setMessages([])
-      setInputMessage('')
-      requestAnimationFrame(autoResizeTextarea)
       focusInput()
+      return
     }
 
-    conversationIdRef.current = activeConversationId
-  }, [activeConversationId])
+    // 2️⃣ First conversation creation (null → id)
+    if (!previousId && activeConversationId) {
+      conversationIdRef.current = activeConversationId
+      return
+    }
 
-  // =========================================================
-  // Welcome message
-  // =========================================================
-  useEffect(() => {
-    if (activeConversationId !== null) return
+    // 3️⃣ Same conversation (id → id)
+    if (previousId === activeConversationId) return
 
-    setMessages([
-      {
-        role: 'assistant',
-        message: "Nice to meet you. What's on your mind?",
-        timestamp: new Date(),
-        variant: 'welcome'
-      }
-    ])
+    // 4️⃣ Switching between existing conversations (id1 → id2)
+    if (previousId && activeConversationId) {
+      conversationIdRef.current = activeConversationId
+      streamingIdRef.current = null
+      setMessages([])
+      focusInput()
 
-    focusInput()
-  }, [activeConversationId])
-
-  // =========================================================
-  // Load history
-  // =========================================================
-  useEffect(() => {
-    if (!activeConversationId) return
-
-    fetchConversationHistory(activeConversationId)
-      .then(res => setMessages(res.messages || []))
-      .catch(() => {
-        setMessages([
-          {
-            role: 'assistant',
-            message: 'Failed to load conversation.',
-            timestamp: new Date(),
-            error: true
-          }
-        ])
-      })
-
-    focusInput()
-  }, [activeConversationId])
-
-  // =========================================================
-  // Auto-scroll messages only
-  // =========================================================
-  useEffect(() => {
-    scrollToBottom()
-  }, [messages, isStreaming])
-
-  const sleep = (ms) => new Promise(r => setTimeout(r, ms))
-
-  // =========================================================
-  // Streaming processor (UNCHANGED)
-  // =========================================================
-  const processQueue = async (assistantIndex) => {
-    if (isProcessingRef.current) return
-    isProcessingRef.current = true
-
-    while (chunkQueueRef.current.length > 0) {
-      const chunk = chunkQueueRef.current.shift()
-      sentenceBufferRef.current += chunk
-
-      const regex = /([^.!?]+[.!?]+)/
-
-      let match
-      while ((match = sentenceBufferRef.current.match(regex))) {
-        const sentence = match[1]
-        sentenceBufferRef.current =
-          sentenceBufferRef.current.slice(sentence.length)
-
-        setMessages(prev => {
-          const updated = [...prev]
-          if (!updated[assistantIndex]) return prev
-          updated[assistantIndex].message += sentence
-          return updated
+      fetchConversationHistory(activeConversationId)
+        .then(res => setMessages(res.messages || []))
+        .catch(() => {
+          setMessages([
+            {
+              id: 'error',
+              role: 'assistant',
+              message: 'Failed to load conversation.'
+            }
+          ])
         })
-
-        await sleep(120)
-      }
     }
-
-    isProcessingRef.current = false
-  }
+  }, [activeConversationId])
 
   // =========================================================
-  // Markdown renderer (UNCHANGED)
+  // Markdown renderer (SAFE)
   // =========================================================
   const renderMessage = (text) => {
+    if (!text) return null
+
     const blocks = text.split(/```/g)
 
     return blocks.map((block, index) => {
@@ -171,133 +90,114 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
         const lines = block.split('\n')
         return (
           <CodeBlock
-            key={index}
-            language={lines[0].trim()}
+            key={`code-${index}`}
+            language={lines[0]?.trim()}
             code={lines.slice(1).join('\n')}
           />
         )
       }
 
-      return block.split('\n').map((rawLine, i) => {
-        const line = rawLine.trim()
-        if (!line) return <div key={`${index}-${i}`} className="msg-spacer" />
-
-        if (/^#{2,4}\s+/.test(line)) {
-          return (
-            <div key={`${index}-${i}`} className="msg-heading">
-              {line.replace(/^#{2,4}\s*/, '')}
-            </div>
-          )
-        }
-
-        if (/^\d+\.\s+/.test(line) || /^(\* |\+ |• )/.test(line)) {
-          return (
-            <div key={`${index}-${i}`} className="msg-bullet">
-              <span className="bullet-dot">•</span>
-              <span>{line.replace(/^(\d+\.\s+|\* |\+ |• )/, '')}</span>
-            </div>
-          )
-        }
-
-        const parts = line.split(/(\*\*.*?\*\*)/g)
-
-        return (
-          <div key={`${index}-${i}`} className="msg-line">
-            {parts.map((part, j) =>
-              part.startsWith('**') ? (
-                <strong key={j}>{part.replace(/\*\*/g, '')}</strong>
-              ) : (
-                <span key={j}>{part}</span>
-              )
-            )}
-          </div>
-        )
-      })
+      return block.split('\n').map((line, i) => (
+        <div key={`line-${index}-${i}`} className="msg-line">
+          {line || <span className="msg-spacer" />}
+        </div>
+      ))
     })
   }
 
   // =========================================================
-  // Send
+  // Send message (STREAMING MERGED INTO messages)
   // =========================================================
   const handleSend = async (e) => {
     e.preventDefault()
     if (!inputMessage.trim() || loading) return
 
-    const userMessage = inputMessage.trim()
+    const userText = inputMessage.trim()
+    const streamingId = crypto.randomUUID()
+    streamingIdRef.current = streamingId
+
     setInputMessage('')
     setLoading(true)
-    setIsStreaming(true)
 
-    requestAnimationFrame(autoResizeTextarea)
-
+    // Add user + streaming assistant placeholder
     setMessages(prev => [
       ...prev,
-      { role: 'user', message: userMessage, timestamp: new Date() }
+      {
+        id: crypto.randomUUID(),
+        role: 'user',
+        message: userText
+      },
+      {
+        id: streamingId,
+        role: 'assistant',
+        message: ''
+      }
     ])
-
-    let assistantIndex
-    setMessages(prev => {
-      assistantIndex = prev.length
-      return [...prev, { role: 'assistant', message: '', timestamp: new Date() }]
-    })
-
-    focusInput()
 
     try {
       await chatStream(
-        userMessage,
+        userText,
         conversationIdRef.current,
+
+        // stream chunk
         (chunk) => {
-          if (chunk.startsWith('__META__')) {
-            const meta = JSON.parse(chunk.replace('__META__', '').trim())
+          setMessages(prev =>
+            prev.map(msg =>
+              msg.id === streamingId
+                ? { ...msg, message: msg.message + chunk }
+                : msg
+            )
+          )
+        },
+
+        // meta
+        (meta) => {
+          if (!conversationIdRef.current && meta?.conversation_id) {
             conversationIdRef.current = meta.conversation_id
             onConversationCreated?.(meta.conversation_id)
-            return
           }
-
-          chunkQueueRef.current.push(chunk)
-          processQueue(assistantIndex)
         }
       )
     } finally {
-      if (sentenceBufferRef.current) {
-        setMessages(prev => {
-          const updated = [...prev]
-          updated[assistantIndex].message += sentenceBufferRef.current
-          return updated
-        })
-        sentenceBufferRef.current = ''
-      }
-
-      setIsStreaming(false)
+      streamingIdRef.current = null
       setLoading(false)
       focusInput()
     }
   }
 
   // =========================================================
+  // Derived UI flags
+  // =========================================================
+  const showWelcome =
+    activeConversationId === null &&
+    messages.length === 0
+
+  // =========================================================
   // UI
   // =========================================================
   return (
     <div className="chatbot-container">
-      <div className="messages-container">
-        {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={`message ${msg.role} ${msg.variant || ''} ${msg.error ? 'error' : ''}`}
-          >
+      <div className={`messages-container ${showWelcome ? 'centered' : ''}`}>
+
+        {showWelcome && (
+          <div className="message assistant welcome">
             <div className="message-content">
-              <div className="message-text">
-                {renderMessage(msg.message)}
-                {isStreaming &&
-                  msg.role === 'assistant' &&
-                  i === messages.length - 1 && (
-                    <span className="cursor">▍</span>
-                  )}
-              </div>
+              Nice to meet you. What&apos;s on your mind today?
+            </div>
+          </div>
+        )}
+
+        {messages.map(msg => (
+          <div key={msg.id} className={`message ${msg.role}`}>
+            <div className="message-content">
+              {renderMessage(msg.message)}
+              {msg.id === streamingIdRef.current && (
+                <span className="cursor">▍</span>
+              )}
             </div>
           </div>
         ))}
+
         <div ref={messagesEndRef} />
       </div>
 
@@ -307,12 +207,9 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
           className="message-input"
           value={inputMessage}
           placeholder="Ask StackMind…"
-          disabled={loading}
           rows={1}
-          onChange={(e) => {
-            setInputMessage(e.target.value)
-            autoResizeTextarea()
-          }}
+          disabled={loading}
+          onChange={(e) => setInputMessage(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
@@ -320,7 +217,6 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
             }
           }}
         />
-
         <button
           className="send-button"
           disabled={loading || !inputMessage.trim()}

@@ -9,21 +9,21 @@ const HEADER_HEIGHT = 64
   ==========
   FINAL & CORRECT
 
-  - Single layout source (pages/ChatLayout.jsx DELETED)
+  - Single layout source
   - Header is FIXED (never scrolls)
   - Sidebar ALWAYS appears below header
   - Sidebar close (✕) always visible on mobile
   - iOS Safari + keyboard safe
+  - ❌ NO ChatBot remounting
 */
 
 const ChatLayout = () => {
   // =========================================================
-  // Active conversation
+  // Active conversation (SOURCE OF TRUTH)
   // =========================================================
   const [activeConversationId, setActiveConversationId] = useState(null)
-  const [chatResetKey, setChatResetKey] = useState(0)
 
-  // Sidebar state
+  // Sidebar
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   // =========================================================
@@ -80,9 +80,7 @@ const ChatLayout = () => {
         overflow: 'hidden'
       }}
     >
-      {/* =====================================================
-         FIXED HEADER (NEVER SCROLLS)
-         ===================================================== */}
+      {/* ================= FIXED HEADER ================= */}
       <header
         style={{
           position: 'fixed',
@@ -114,7 +112,6 @@ const ChatLayout = () => {
               background: 'var(--bg-input)',
               cursor: 'pointer',
               fontSize: 18,
-              color: 'var(--menu-icon-color)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center'
@@ -139,15 +136,13 @@ const ChatLayout = () => {
             onClick={() =>
               setTheme(prev => (prev === 'dark' ? 'light' : 'dark'))
             }
-            aria-label="Toggle theme"
             style={{
               width: 36,
               height: 36,
               borderRadius: '50%',
               border: `1px solid ${borderColor}`,
               background: 'var(--bg-input)',
-              cursor: 'pointer',
-              fontSize: 16
+              cursor: 'pointer'
             }}
           >
             {theme === 'dark' ? '☀️' : '🌙'}
@@ -177,13 +172,12 @@ const ChatLayout = () => {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontWeight: 700,
-                  fontSize: 13
+                  fontWeight: 700
                 }}
               >
                 {user.username.charAt(0).toUpperCase()}
               </div>
-              <span style={{ fontSize: 13 }}>▾</span>
+              ▾
             </button>
 
             {userMenuOpen && (
@@ -196,28 +190,19 @@ const ChatLayout = () => {
                   background: 'var(--bg-input)',
                   border: `1px solid ${borderColor}`,
                   borderRadius: 12,
-                  boxShadow: '0 12px 30px rgba(0,0,0,0.18)',
                   padding: 8,
                   zIndex: 2000
                 }}
               >
-                <div
-                  style={{
-                    padding: '8px 10px',
-                    fontSize: 13,
-                    opacity: 0.7
-                  }}
-                >
+                <div style={{ padding: '8px 10px', fontSize: 13, opacity: 0.7 }}>
                   {user.username}
                 </div>
-
                 <div
                   onClick={handleLogout}
                   style={{
                     padding: '8px 10px',
                     cursor: 'pointer',
-                    fontSize: 13,
-                    borderRadius: 8
+                    fontSize: 13
                   }}
                 >
                   🚪 Logout
@@ -228,9 +213,7 @@ const ChatLayout = () => {
         </div>
       </header>
 
-      {/* =====================================================
-         CONTENT BELOW HEADER (OFFSETED)
-         ===================================================== */}
+      {/* ================= CONTENT ================= */}
       <div
         style={{
           paddingTop: HEADER_HEIGHT,
@@ -244,14 +227,13 @@ const ChatLayout = () => {
             activeConversationId={activeConversationId}
             onSelectConversation={(id) => {
               setActiveConversationId(id)
-              setChatResetKey(prev => prev + 1)
               setSidebarOpen(false)
             }}
           />
         )}
 
+        {/* ❗ NO key prop */}
         <ChatBot
-          key={chatResetKey}
           activeConversationId={activeConversationId}
           onConversationCreated={setActiveConversationId}
         />

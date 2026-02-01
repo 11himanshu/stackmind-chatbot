@@ -1,216 +1,251 @@
-/* =========================================================
-   ChatBot Root Container
-   ========================================================= */
 .chatbot-container {
   flex: 1;
-  min-height: 0;
-  min-width: 0;
   display: flex;
   flex-direction: column;
   background: var(--bg-surface);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-
-  /* HARD STOP page scroll */
   overflow: hidden;
 }
 
-/* =========================================================
-   Messages Area — ONLY SCROLLABLE REGION
-   ========================================================= */
-.messages-container {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
+/* ================= MESSAGES ================= */
 
+.messages-container {
+  position: relative;
+  flex: 1;
   padding: 28px;
   display: flex;
   flex-direction: column;
   gap: 24px;
-
+  overflow-y: auto;
   background: var(--bg-messages);
-
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
 }
 
-/* =========================================================
-   Message Rows
-   ========================================================= */
+/* Hero center */
+.messages-container.centered {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding-top: 0;
+}
+
+/* Soft spotlight */
+.messages-container.centered::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at center,
+    rgba(255, 183, 77, 0.12),
+    rgba(255, 94, 168, 0.10),
+    transparent 65%
+  );
+  pointer-events: none;
+}
+
+/* ================= MESSAGE ROWS ================= */
+
 .message {
   display: flex;
   width: 100%;
-}
-
-.message.assistant {
-  justify-content: flex-start;
 }
 
 .message.user {
   justify-content: flex-end;
 }
 
-/* =========================================================
-   Welcome Message
-   ========================================================= */
+.message.assistant {
+  justify-content: flex-start;
+}
+
+/* ================= WELCOME HERO ================= */
+
 .message.assistant.welcome {
   justify-content: center;
 }
 
 .message.assistant.welcome .message-content {
+  position: relative;
+  overflow: hidden;
+
   max-width: 520px;
+  padding: 22px 32px;
+  border-radius: 26px;
+
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+
+  box-shadow:
+    0 30px 60px rgba(0, 0, 0, 0.25),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.6;
   text-align: center;
-  font-size: 16px;
-  border-radius: 22px;
+
+  animation: welcomeFloat 6s ease-in-out infinite;
+  transform: translateZ(0);
 }
 
-/* =========================================================
-   Message Bubble
-   ========================================================= */
+/* 🌊 ACTUAL ANIMATED GRADIENT LAYER */
+.message.assistant.welcome .message-content::before {
+  content: '';
+  position: absolute;
+  inset: -40%;
+  z-index: -1;
+
+  background: linear-gradient(
+    135deg,
+    #ff9a8b,
+    #ff6a88,
+    #c77dff,
+    #fcd34d
+  );
+
+  background-size: 400% 400%;
+  animation: gradientWave 5s ease infinite;
+
+  will-change: background-position, transform;
+  transform: translateZ(0);
+}
+
+/* ✨ Glass shimmer */
+.message.assistant.welcome .message-content::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+
+  background: linear-gradient(
+    120deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.35),
+    transparent 70%
+  );
+
+  opacity: 0.25;
+  transform: translateX(-120%);
+  animation: shimmerWave 7s ease-in-out infinite;
+
+  pointer-events: none;
+}
+
+/* ================= ANIMATIONS ================= */
+
+@keyframes gradientWave {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes shimmerWave {
+  0% {
+    transform: translateX(-120%);
+  }
+  50% {
+    transform: translateX(120%);
+  }
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+@keyframes welcomeFloat {
+  0% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+  100% {
+    transform: translateY(0px);
+  }
+}
+
+/* ================= NORMAL BUBBLES ================= */
+
 .message-content {
   max-width: 68%;
   padding: 14px 18px;
   border-radius: 18px;
-  line-height: 1.45;
-  word-wrap: break-word;
-  animation: messageIn 0.18s ease-out;
-}
-
-.message.assistant .message-content {
   background: var(--bg-assistant);
-  color: var(--text-primary);
-  border-bottom-left-radius: 6px;
+  word-wrap: break-word;
 }
 
 .message.user .message-content {
-  background: var(--bg-user);
+  background: linear-gradient(
+    135deg,
+    #6366f1,
+    #22d3ee
+  );
   color: var(--text-inverse);
-  border-bottom-right-radius: 6px;
 }
 
-@keyframes messageIn {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* =========================================================
-   Message Text
-   ========================================================= */
-.message-text {
-  font-size: 14.5px;
-  white-space: pre-wrap;
-}
-
-/* =========================================================
-   Cursor
-   ========================================================= */
-.cursor {
-  display: inline-block;
-  margin-left: 2px;
-  animation: cursorBlink 1s infinite;
-}
-
-@keyframes cursorBlink {
-  0% { opacity: 0 }
-  50% { opacity: 1 }
-  100% { opacity: 0 }
-}
-
-/* =========================================================
-   INPUT AREA — FIXED (NO STICKY)
-   ========================================================= */
-.input-container {
-  flex-shrink: 0;
-  display: flex;
-  gap: 14px;
-  padding: 16px 20px;
-  padding-bottom: calc(16px + env(safe-area-inset-bottom));
-
-  background: var(--bg-input);
-  border-top: 1px solid var(--border-subtle);
-}
-
-/* =========================================================
-   AUTO-GROW TEXTAREA (KEY FIX)
-   ========================================================= */
-.message-input {
-  flex: 1;
-  resize: none;
-  max-height: 160px;
-  min-height: 44px;
-
-  padding: 12px 18px;
-  border-radius: 22px;
-  border: 1px solid var(--border-subtle);
-
-  font-size: 16px;
-  line-height: 1.4;
-  outline: none;
-
-  background: var(--bg-input);
-  color: var(--text-primary);
-
-  overflow-y: auto;
-}
-
-.message-input::placeholder {
-  color: var(--text-secondary);
-}
-
-.message-input:focus {
-  border-color: #243b55;
-  box-shadow: 0 0 0 3px rgba(36, 59, 85, 0.15);
-}
-
-/* =========================================================
-   SEND BUTTON
-   ========================================================= */
-.send-button {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-
-  background: var(--bg-user);
-  color: var(--text-inverse);
-
-  border: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  cursor: pointer;
-}
-
-.send-button:disabled {
-  background: #aaa;
-  cursor: not-allowed;
-}
-
-/* =========================================================
-   Structured Content
-   ========================================================= */
-.msg-heading {
-  font-size: 18px;
-  font-weight: 700;
-  margin-top: 18px;
-}
+/* ================= MARKDOWN ================= */
 
 .msg-line {
-  font-size: 14.5px;
   line-height: 1.65;
-}
-
-.msg-bullet {
-  display: flex;
-  gap: 10px;
-  margin-left: 16px;
 }
 
 .msg-spacer {
   height: 8px;
+}
+
+/* ================= INPUT ================= */
+
+.input-container {
+  display: flex;
+  gap: 12px;
+  padding: 16px 20px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(14px);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.message-input {
+  flex: 1;
+  min-height: 44px;
+  border-radius: 999px;
+  padding: 12px 18px;
+  border: 1px solid var(--border-subtle);
+  outline: none;
+}
+
+.send-button {
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  background: linear-gradient(
+    135deg,
+    #f97316,
+    #ec4899,
+    #a855f7
+  );
+  color: white;
+  border: none;
+  cursor: pointer;
+}
+
+.send-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ================= CURSOR ================= */
+
+.cursor {
+  display: inline-block;
+  margin-left: 2px;
+  animation: blink 1s steps(1) infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
 }

@@ -31,6 +31,9 @@ body,
    🌞 LIGHT THEME (DEFAULT)
    ========================================================= */
 :root {
+  /* 🔥 HEADER HEIGHT — SINGLE SOURCE OF TRUTH */
+  --header-height: 64px;
+
   --bg-app: #eef1f5;
   --bg-surface: #f4f6fb;
 

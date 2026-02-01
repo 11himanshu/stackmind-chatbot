@@ -8,12 +8,15 @@ from typing import Optional
 
 class ChatMessage(BaseModel):
     message: str
-    conversation_id: Optional[str] = None
+    # 🔥 FIX:
+    # conversation_id MUST be int
+    # Backend, DB, and frontend all use integers
+    conversation_id: Optional[int] = None
 
 
 class ChatResponse(BaseModel):
     response: str
-    conversation_id: Optional[str] = None
+    conversation_id: Optional[int] = None
 
 
 class HealthResponse(BaseModel):
