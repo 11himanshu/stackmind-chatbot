@@ -8,7 +8,7 @@
   - NEVER pass user_id from frontend (security)
 */
 
-const API_BASE_URL = 'http://localhost:8000'
+const API_BASE_URL = 'https://stackmind-chatbot.onrender.com'
 
 /* =========================================================
    Helper: Auth headers
