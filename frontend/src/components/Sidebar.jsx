@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { fetchConversations, deleteConversation } from '../services/api'
 
+const HEADER_HEIGHT = 64
+
 const Sidebar = ({ activeConversationId, onSelectConversation }) => {
   const [conversations, setConversations] = useState([])
   const [isMobile, setIsMobile] = useState(false)
@@ -56,13 +58,16 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
 
   return (
     <>
-      {/* ================= Overlay (mobile only) ================= */}
+      {/* ================= Overlay (mobile only, BELOW header) ================= */}
       {isMobile && (
         <div
           onClick={handleClose}
           style={{
             position: 'fixed',
-            inset: 0,
+            top: HEADER_HEIGHT,
+            left: 0,
+            right: 0,
+            bottom: 0,
             background: 'rgba(0,0,0,0.45)',
             zIndex: 49
           }}
@@ -73,30 +78,36 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
       <div
         style={{
           position: isMobile ? 'fixed' : 'relative',
-          top: 0,
+          top: isMobile ? HEADER_HEIGHT : 0,
           left: 0,
+
           width: 300,
           maxWidth: '85vw',
-          height: isMobile ? '100dvh' : 'calc(100vh - 24px)',
+          height: isMobile
+            ? `calc(100dvh - ${HEADER_HEIGHT}px)`
+            : 'calc(100vh - 24px)',
+
           margin: isMobile ? 0 : 12,
+
           background: 'var(--bg-input)',
           borderRight: '1px solid var(--border-strong)',
           borderRadius: isMobile ? '0 18px 18px 0' : 18,
+
           boxShadow: 'var(--shadow-medium)',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
+
           zIndex: 50
         }}
       >
-        {/* ================= STICKY HEADER (FIX) ================= */}
+        {/* ================= Sidebar Header (STICKY INSIDE SIDEBAR) ================= */}
         <div
           style={{
             position: 'sticky',
             top: 0,
             zIndex: 60,
             padding: 14,
-            paddingTop: 'calc(14px + env(safe-area-inset-top))',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -106,7 +117,6 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
         >
           <strong style={{ fontSize: 14 }}>Conversations</strong>
 
-          {/* ✕ Close (mobile only — ALWAYS visible now) */}
           {isMobile && (
             <button
               onClick={handleClose}

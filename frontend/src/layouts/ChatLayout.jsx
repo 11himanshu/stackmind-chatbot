@@ -6,12 +6,14 @@ const HEADER_HEIGHT = 64
 
 /*
   ChatLayout
-  ----------
-  FIXED & FINAL
-  - Header is FIXED (not sticky)
-  - Sidebar never hides under header
-  - Mobile keyboards do NOT move header
-  - iOS Safari safe
+  ==========
+  FINAL & CORRECT
+
+  - Single layout source (pages/ChatLayout.jsx DELETED)
+  - Header is FIXED (never scrolls)
+  - Sidebar ALWAYS appears below header
+  - Sidebar close (✕) always visible on mobile
+  - iOS Safari + keyboard safe
 */
 
 const ChatLayout = () => {
@@ -21,7 +23,7 @@ const ChatLayout = () => {
   const [activeConversationId, setActiveConversationId] = useState(null)
   const [chatResetKey, setChatResetKey] = useState(0)
 
-  // Sidebar
+  // Sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   // =========================================================
@@ -53,7 +55,7 @@ const ChatLayout = () => {
   }, [])
 
   // =========================================================
-  // Derived tokens
+  // Derived UI tokens
   // =========================================================
   const borderColor =
     theme === 'dark'
@@ -79,7 +81,7 @@ const ChatLayout = () => {
       }}
     >
       {/* =====================================================
-         FIXED HEADER — NEVER SCROLLS (NO STICKY)
+         FIXED HEADER (NEVER SCROLLS)
          ===================================================== */}
       <header
         style={{
@@ -227,7 +229,7 @@ const ChatLayout = () => {
       </header>
 
       {/* =====================================================
-         CONTENT BELOW HEADER (OFFSET FIX)
+         CONTENT BELOW HEADER (OFFSETED)
          ===================================================== */}
       <div
         style={{
