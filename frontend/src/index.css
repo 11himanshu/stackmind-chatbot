@@ -47,14 +47,14 @@ body,
   --text-secondary: #6b7280;
   --text-inverse: #ffffff;
 
-  /* ✅ Visible black borders */
+  /* ✅ clearly visible borders */
   --border-subtle: rgba(0, 0, 0, 0.18);
   --border-strong: rgba(0, 0, 0, 0.35);
 
   --shadow-soft: 0 6px 18px rgba(0, 0, 0, 0.08);
   --shadow-medium: 0 12px 28px rgba(0, 0, 0, 0.14);
 
-  /* Header specific */
+  /* Header */
   --header-bg: linear-gradient(
     180deg,
     rgba(255, 255, 255, 0.95),
@@ -62,6 +62,9 @@ body,
   );
   --header-text: var(--text-primary);
   --header-pill-bg: rgba(255, 255, 255, 0.9);
+
+  /* ✅ MENU ICON (LIGHT MODE) */
+  --menu-icon-color: #111827;
 }
 
 /* =========================================================
@@ -86,7 +89,7 @@ html[data-theme='dark'] {
   --text-secondary: #9ca3af;
   --text-inverse: #ffffff;
 
-  /* ✅ Visible white borders (KEY FIX) */
+  /* ✅ clearly visible white borders */
   --border-subtle: rgba(255, 255, 255, 0.28);
   --border-strong: rgba(255, 255, 255, 0.5);
 
@@ -100,6 +103,9 @@ html[data-theme='dark'] {
   );
   --header-text: var(--text-primary);
   --header-pill-bg: rgba(255, 255, 255, 0.08);
+
+  /* ✅ MENU ICON (DARK MODE) */
+  --menu-icon-color: #ffffff;
 }
 
 /* =========================================================
@@ -133,7 +139,7 @@ header {
 }
 
 /* =========================================================
-   HEADER INTERACTIVE ELEMENTS
+   HEADER INTERACTION
    ========================================================= */
 header button {
   transition:
@@ -153,9 +159,8 @@ header button:active {
 }
 
 /* =========================================================
-   HEADER PILLS (menu, theme, user)
+   HEADER PILLS
    ========================================================= */
-header .pill,
 header button {
   background: var(--header-pill-bg);
   border: 1px solid var(--border-strong);
@@ -163,7 +168,7 @@ header button {
 }
 
 /* =========================================================
-   SIDEBAR DEPTH FIX (NO LOGIC CHANGE)
+   SIDEBAR
    ========================================================= */
 .sidebar {
   background: var(--bg-input);
@@ -172,7 +177,7 @@ header button {
 }
 
 /* =========================================================
-   CHAT CONTAINER POLISH
+   CHAT CONTAINER
    ========================================================= */
 .chatbot-container {
   background: var(--bg-surface);
@@ -183,7 +188,7 @@ header button {
 }
 
 /* =========================================================
-   INPUT AREA POLISH
+   INPUT AREA
    ========================================================= */
 .input-container {
   background: var(--bg-input);
@@ -192,7 +197,7 @@ header button {
 }
 
 /* =========================================================
-   SCROLLBAR (SUBTLE)
+   SCROLLBAR
    ========================================================= */
 *::-webkit-scrollbar {
   width: 10px;

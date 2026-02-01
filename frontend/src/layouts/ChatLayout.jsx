@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import Sidebar from '../components/Sidebar'
 import ChatBot from '../components/ChatBot'
 
@@ -10,7 +10,7 @@ import ChatBot from '../components/ChatBot'
   - Owns the SOURCE OF TRUTH for activeConversationId
   - Controls chat reset behavior (New Chat)
   - Receives newly-created conversation_id from ChatBot
-  - Handles global UI concerns (theme toggle)
+  - Handles global UI concerns (theme toggle, user menu)
 */
 
 const ChatLayout = () => {
@@ -38,12 +38,28 @@ const ChatLayout = () => {
   }, [theme])
 
   // =========================================================
-  // Derived UI tokens (SAFE + EXPLICIT)
+  // User menu state
+  // =========================================================
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const userMenuRef = useRef(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
+        setUserMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // =========================================================
+  // Derived UI tokens
   // =========================================================
   const borderColor =
     theme === 'dark'
-      ? 'rgba(255, 255, 255, 0.35)' // white borders in dark mode
-      : 'rgba(0, 0, 0, 0.35)'       // black borders in light mode
+      ? 'rgba(255,255,255,0.35)'
+      : 'rgba(0,0,0,0.35)'
 
   // TEMP user
   const user =
@@ -91,29 +107,20 @@ const ChatLayout = () => {
         <header
           style={{
             height: 64,
-            padding: '0 18px',
+            padding: '0 16px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             flexShrink: 0,
-
             background: 'var(--bg-input)',
-            color: 'var(--text-primary)',
-
             borderBottom: `1px solid ${borderColor}`,
-            boxShadow: '0 2px 10px rgba(0,0,0,0.06)',
-            backdropFilter: 'blur(10px)',
-            WebkitBackdropFilter: 'blur(10px)'
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            zIndex: 30
           }}
         >
-          {/* ===== Left section ===== */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 14
-            }}
-          >
+          {/* ===== Left ===== */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <button
               onClick={() => setSidebarOpen(prev => !prev)}
               aria-label="Toggle sidebar"
@@ -121,11 +128,11 @@ const ChatLayout = () => {
                 width: 36,
                 height: 36,
                 borderRadius: 10,
-                background: 'var(--bg-input)',
                 border: `1px solid ${borderColor}`,
-                color: 'var(--text-primary)',
-                fontSize: 18,
+                background: 'var(--bg-input)',
                 cursor: 'pointer',
+                fontSize: 18,
+                color: 'var(--menu-icon-color)', // ✅ FIX: visible in dark mode
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center'
@@ -138,92 +145,113 @@ const ChatLayout = () => {
               <div style={{ fontWeight: 700, fontSize: 15 }}>
                 StackMind
               </div>
-              <div
-                style={{
-                  fontSize: 11,
-                  opacity: 0.65
-                }}
-              >
+              <div style={{ fontSize: 11, opacity: 0.65 }}>
                 Powered by Himanshu
               </div>
             </div>
           </div>
 
-          {/* ===== Right section ===== */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12
-            }}
-          >
-            {/* Theme toggle */}
+          {/* ===== Right ===== */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {/* Theme toggle (ICON ONLY) */}
             <button
               onClick={() =>
                 setTheme(prev => (prev === 'dark' ? 'light' : 'dark'))
               }
+              aria-label="Toggle theme"
               style={{
-                background: 'var(--bg-input)',
+                width: 36,
+                height: 36,
+                borderRadius: '50%',
                 border: `1px solid ${borderColor}`,
-                borderRadius: 999,
-                padding: '6px 12px',
-                fontSize: 12,
+                background: 'var(--bg-input)',
                 cursor: 'pointer',
-                color: 'var(--text-primary)',
-                whiteSpace: 'nowrap',
-                boxShadow: '0 2px 6px rgba(0,0,0,0.08)'
+                fontSize: 16
               }}
             >
-              {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
+              {theme === 'dark' ? '☀️' : '🌙'}
             </button>
 
-            {/* User */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '4px 8px',
-                borderRadius: 999,
-                background: 'var(--bg-input)',
-                border: `1px solid ${borderColor}`
-              }}
-            >
-              <div
+            {/* User menu */}
+            <div ref={userMenuRef} style={{ position: 'relative' }}>
+              <button
+                onClick={() => setUserMenuOpen(prev => !prev)}
                 style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: '50%',
-                  background: '#22c55e',
-                  color: '#0f172a',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  fontWeight: 700,
-                  fontSize: 13
+                  gap: 6,
+                  padding: '4px 8px',
+                  borderRadius: 999,
+                  border: `1px solid ${borderColor}`,
+                  background: 'var(--bg-input)',
+                  cursor: 'pointer'
                 }}
               >
-                {user.username.charAt(0).toUpperCase()}
-              </div>
+                <div
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: '50%',
+                    background: '#22c55e',
+                    color: '#0f172a',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontWeight: 700,
+                    fontSize: 13
+                  }}
+                >
+                  {user.username.charAt(0).toUpperCase()}
+                </div>
+                <span style={{ fontSize: 13 }}>▾</span>
+              </button>
 
-              <span style={{ fontSize: 13 }}>
-                {user.username}
-              </span>
+              {userMenuOpen && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    right: 0,
+                    top: 'calc(100% + 8px)',
+                    minWidth: 160,
+                    background: 'var(--bg-input)',
+                    border: `1px solid ${borderColor}`,
+                    borderRadius: 12,
+                    boxShadow: '0 12px 30px rgba(0,0,0,0.18)',
+                    padding: 8,
+                    zIndex: 50
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: '8px 10px',
+                      fontSize: 13,
+                      opacity: 0.7
+                    }}
+                  >
+                    {user.username}
+                  </div>
+
+                  <div
+                    onClick={handleLogout}
+                    style={{
+                      padding: '8px 10px',
+                      cursor: 'pointer',
+                      fontSize: 13,
+                      borderRadius: 8
+                    }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.background =
+                        'rgba(0,0,0,0.06)')
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.background = 'transparent')
+                    }
+                  >
+                    🚪 Logout
+                  </div>
+                </div>
+              )}
             </div>
-
-            {/* Logout */}
-            <button
-              onClick={handleLogout}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: 'var(--text-secondary)',
-                fontSize: 12,
-                cursor: 'pointer'
-              }}
-            >
-              Logout
-            </button>
           </div>
         </header>
 

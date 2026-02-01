@@ -3,22 +3,6 @@ import { chatStream, fetchConversationHistory } from '../services/api'
 import CodeBlock from './CodeBlock.jsx'
 import './ChatBot.css'
 
-/*
-  ChatBot Component
-  ----------------
-  Responsibilities:
-  - Render chat messages (user + assistant)
-  - Stream assistant responses from backend
-  - Preserve markdown formatting (**bold**, bullets, headings, code blocks)
-  - Load conversation history when selected
-  - Report newly-created conversation_id to parent (ChatLayout)
-
-  ARCHITECTURE GUARANTEES:
-  - ChatBot does NOT own layout (header/sidebar)
-  - ChatBot does NOT own global conversation state
-  - ChatBot NEVER resets itself on conversation creation
-*/
-
 const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   // =========================================================
   // UI state
@@ -30,30 +14,37 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
 
   // =========================================================
   // Conversation id reference
-  // ---------------------------------------------------------
-  // IMPORTANT:
-  // - This ref DOES NOT cause re-render
-  // - Persists conversation_id across streaming
   // =========================================================
   const conversationIdRef = useRef(activeConversationId)
 
   // =========================================================
-  // Refs for scrolling + streaming control
+  // Refs
   // =========================================================
   const messagesEndRef = useRef(null)
+  const inputRef = useRef(null)
+
   const chunkQueueRef = useRef([])
   const isProcessingRef = useRef(false)
   const sentenceBufferRef = useRef('')
 
+  // =========================================================
+  // Auto focus helper (mobile-safe)
+  // =========================================================
+  const focusInput = () => {
+    setTimeout(() => {
+      inputRef.current?.focus({ preventScroll: true })
+    }, 120)
+  }
+
+  // =========================================================
+  // Scroll
+  // =========================================================
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
   // =========================================================
-  // 🔥 CRITICAL FIX — SAFE RESET LOGIC
-  // ---------------------------------------------------------
-  // Reset ONLY when USER switches conversations
-  // NOT when backend creates a conversation_id
+  // Reset ONLY on user conversation switch
   // =========================================================
   useEffect(() => {
     const isUserSwitch =
@@ -61,21 +52,20 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
       conversationIdRef.current !== activeConversationId
 
     if (isUserSwitch) {
-      // Hard reset streaming state
       chunkQueueRef.current = []
       sentenceBufferRef.current = ''
       isProcessingRef.current = false
 
       setIsStreaming(false)
       setMessages([])
+      focusInput()
     }
 
-    // ALWAYS sync ref AFTER decision
     conversationIdRef.current = activeConversationId
   }, [activeConversationId])
 
   // =========================================================
-  // Welcome message (ONLY for brand new chat)
+  // Welcome message (brand new chat)
   // =========================================================
   useEffect(() => {
     if (activeConversationId !== null) return
@@ -88,10 +78,12 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
         variant: 'welcome'
       }
     ])
+
+    focusInput()
   }, [activeConversationId])
 
   // =========================================================
-  // Load conversation history
+  // Load history
   // =========================================================
   useEffect(() => {
     if (!activeConversationId) return
@@ -108,6 +100,8 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
           }
         ])
       })
+
+    focusInput()
   }, [activeConversationId])
 
   // =========================================================
@@ -120,7 +114,7 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   const sleep = (ms) => new Promise(r => setTimeout(r, ms))
 
   // =========================================================
-  // Sentence-level streaming processor
+  // Streaming processor
   // =========================================================
   const processQueue = async (assistantIndex) => {
     if (isProcessingRef.current) return
@@ -153,13 +147,12 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   }
 
   // =========================================================
-  // MARKDOWN RENDERER (EDGE-CASE COMPLETE)
+  // Markdown renderer (UNCHANGED)
   // =========================================================
   const renderMessage = (text) => {
     const blocks = text.split(/```/g)
 
     return blocks.map((block, index) => {
-      // ---------- Code block ----------
       if (index % 2 === 1) {
         const lines = block.split('\n')
         return (
@@ -171,15 +164,10 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
         )
       }
 
-      // ---------- Normal text ----------
       return block.split('\n').map((rawLine, i) => {
         const line = rawLine.trim()
+        if (!line) return <div key={`${index}-${i}`} className="msg-spacer" />
 
-        if (!line) {
-          return <div key={`${index}-${i}`} className="msg-spacer" />
-        }
-
-        // Headings ###, ####
         if (/^#{2,4}\s+/.test(line)) {
           return (
             <div key={`${index}-${i}`} className="msg-heading">
@@ -188,27 +176,15 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
           )
         }
 
-        // Numbered lists
-        if (/^\d+\.\s+/.test(line)) {
+        if (/^\d+\.\s+/.test(line) || /^(\* |\+ |• )/.test(line)) {
           return (
             <div key={`${index}-${i}`} className="msg-bullet">
               <span className="bullet-dot">•</span>
-              <span>{line.replace(/^\d+\.\s+/, '')}</span>
+              <span>{line.replace(/^(\d+\.\s+|\* |\+ |• )/, '')}</span>
             </div>
           )
         }
 
-        // Bullets *, +, •
-        if (/^(\* |\+ |• )/.test(line)) {
-          return (
-            <div key={`${index}-${i}`} className="msg-bullet">
-              <span className="bullet-dot">•</span>
-              <span>{line.replace(/^(\* |\+ |• )/, '')}</span>
-            </div>
-          )
-        }
-
-        // Inline bold **text**
         const parts = line.split(/(\*\*.*?\*\*)/g)
 
         return (
@@ -227,7 +203,7 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   }
 
   // =========================================================
-  // Handle send (STREAM + SAVE)
+  // Send
   // =========================================================
   const handleSend = async (e) => {
     e.preventDefault()
@@ -238,25 +214,24 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
     setLoading(true)
     setIsStreaming(true)
 
-    // Push user message immediately
     setMessages(prev => [
       ...prev,
       { role: 'user', message: userMessage, timestamp: new Date() }
     ])
 
-    // Placeholder assistant message
     let assistantIndex
     setMessages(prev => {
       assistantIndex = prev.length
       return [...prev, { role: 'assistant', message: '', timestamp: new Date() }]
     })
 
+    focusInput()
+
     try {
       await chatStream(
         userMessage,
         conversationIdRef.current,
         (chunk) => {
-          // 🔥 META MESSAGE (STRING, SENT ONCE)
           if (chunk.startsWith('__META__')) {
             const meta = JSON.parse(chunk.replace('__META__', '').trim())
             conversationIdRef.current = meta.conversation_id
@@ -269,7 +244,6 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
         }
       )
     } finally {
-      // Flush remaining buffer
       if (sentenceBufferRef.current) {
         setMessages(prev => {
           const updated = [...prev]
@@ -281,6 +255,7 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
 
       setIsStreaming(false)
       setLoading(false)
+      focusInput()
     }
   }
 
@@ -312,6 +287,7 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
 
       <form className="input-container" onSubmit={handleSend}>
         <input
+          ref={inputRef}
           className="message-input"
           value={inputMessage}
           onChange={(e) => setInputMessage(e.target.value)}
