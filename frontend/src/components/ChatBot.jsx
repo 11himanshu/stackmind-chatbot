@@ -4,9 +4,6 @@ import CodeBlock from './CodeBlock.jsx'
 import './ChatBot.css'
 
 const ChatBot = ({ activeConversationId, onConversationCreated }) => {
-  // =========================================================
-  // Core state (SINGLE SOURCE OF TRUTH)
-  // =========================================================
   const [messages, setMessages] = useState([])
   const [inputMessage, setInputMessage] = useState('')
   const [loading, setLoading] = useState(false)
@@ -15,37 +12,19 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   const streamingIdRef = useRef(null)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
-
   const prevMessageCountRef = useRef(0)
 
-  // =========================================================
-  // Focus input safely
-  // =========================================================
   const focusInput = () => {
     requestAnimationFrame(() => {
       inputRef.current?.focus({ preventScroll: true })
     })
   }
 
-  // =========================================================
-  // Scroll handling (SAFE, NO CONVERSATION IMPACT)
-  // =========================================================
   useEffect(() => {
     const prev = prevMessageCountRef.current
     const curr = messages.length
 
-    // First message: hard anchor to avoid jump
-    if (prev === 0 && curr > 0) {
-      requestAnimationFrame(() => {
-        messagesEndRef.current?.scrollIntoView({
-          block: 'end',
-          behavior: 'auto'
-        })
-      })
-    }
-
-    // Subsequent messages: keep pinned to bottom
-    if (prev > 0 && curr > prev) {
+    if (curr > prev) {
       messagesEndRef.current?.scrollIntoView({
         block: 'end',
         behavior: 'auto'
@@ -55,35 +34,26 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
     prevMessageCountRef.current = curr
   }, [messages])
 
-  // =========================================================
-  // Handle conversation changes (ORIGINAL, UNTOUCHED LOGIC)
-  // =========================================================
   useEffect(() => {
     const previousId = conversationIdRef.current
 
-    // 1️⃣ New Chat (id → null)
     if (previousId && activeConversationId === null) {
       conversationIdRef.current = null
-      streamingIdRef.current = null
       setMessages([])
       prevMessageCountRef.current = 0
       focusInput()
       return
     }
 
-    // 2️⃣ First conversation creation (null → id)
     if (!previousId && activeConversationId) {
       conversationIdRef.current = activeConversationId
       return
     }
 
-    // 3️⃣ Same conversation (id → id)
     if (previousId === activeConversationId) return
 
-    // 4️⃣ Switching between existing conversations
     if (previousId && activeConversationId) {
       conversationIdRef.current = activeConversationId
-      streamingIdRef.current = null
       setMessages([])
       prevMessageCountRef.current = 0
       focusInput()
@@ -92,19 +62,12 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
         .then(res => setMessages(res.messages || []))
         .catch(() => {
           setMessages([
-            {
-              id: 'error',
-              role: 'assistant',
-              message: 'Failed to load conversation.'
-            }
+            { id: 'error', role: 'assistant', message: 'Failed to load conversation.' }
           ])
         })
     }
   }, [activeConversationId])
 
-  // =========================================================
-  // Markdown renderer (SAFE)
-  // =========================================================
   const renderMessage = (text) => {
     if (!text) return null
 
@@ -115,7 +78,7 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
         const lines = block.split('\n')
         return (
           <CodeBlock
-            key={`code-${index}`}
+            key={index}
             language={lines[0]?.trim()}
             code={lines.slice(1).join('\n')}
           />
@@ -123,16 +86,13 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
       }
 
       return block.split('\n').map((line, i) => (
-        <div key={`line-${index}-${i}`} className="msg-line">
+        <div key={`${index}-${i}`} className="msg-line">
           {line || <span className="msg-spacer" />}
         </div>
       ))
     })
   }
 
-  // =========================================================
-  // Send message (STREAMING MERGED INTO messages)
-  // =========================================================
   const handleSend = async (e) => {
     e.preventDefault()
     if (!inputMessage.trim() || loading) return
@@ -146,23 +106,14 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
 
     setMessages(prev => [
       ...prev,
-      {
-        id: crypto.randomUUID(),
-        role: 'user',
-        message: userText
-      },
-      {
-        id: streamingId,
-        role: 'assistant',
-        message: ''
-      }
+      { id: crypto.randomUUID(), role: 'user', message: userText },
+      { id: streamingId, role: 'assistant', message: '' }
     ])
 
     try {
       await chatStream(
         userText,
         conversationIdRef.current,
-
         (chunk) => {
           setMessages(prev =>
             prev.map(msg =>
@@ -172,7 +123,6 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
             )
           )
         },
-
         (meta) => {
           if (!conversationIdRef.current && meta?.conversation_id) {
             conversationIdRef.current = meta.conversation_id
@@ -187,20 +137,12 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
     }
   }
 
-  // =========================================================
-  // Derived UI flags
-  // =========================================================
   const showWelcome =
-    activeConversationId === null &&
-    messages.length === 0
+    activeConversationId === null && messages.length === 0
 
-  // =========================================================
-  // UI
-  // =========================================================
   return (
     <div className="chatbot-container">
       <div className={`messages-container ${showWelcome ? 'centered' : ''}`}>
-
         {showWelcome && (
           <div className="message assistant welcome">
             <div className="message-content">
@@ -223,14 +165,22 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
         <div ref={messagesEndRef} />
       </div>
 
-      <form className="input-container" onSubmit={handleSend}>
+      {/* 🔥 NOT A FORM — PREVENT SAFARI UI */}
+      <div className="input-container">
         <textarea
           ref={inputRef}
           className="message-input"
           value={inputMessage}
           placeholder="Ask StackMind…"
-          rows={1}
           disabled={loading}
+
+          inputMode="text"
+          enterKeyHint="send"
+          autoCorrect="off"
+          autoCapitalize="off"
+          autoComplete="off"
+          spellCheck={false}
+
           onChange={(e) => setInputMessage(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -239,13 +189,15 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
             }
           }}
         />
+
         <button
           className="send-button"
           disabled={loading || !inputMessage.trim()}
+          onClick={handleSend}
         >
           Send
         </button>
-      </form>
+      </div>
     </div>
   )
 }
