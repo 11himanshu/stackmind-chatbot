@@ -1,18 +1,16 @@
 /* =========================================================
    Code Block Wrapper
-   ---------------------------------------------------------
-   - Contains Prism-highlighted code
-   - Scoped to avoid leaking styles into chat UI
    ========================================================= */
 .code-wrapper {
   background: #0f172a;
   border-radius: 12px;
   overflow: hidden;
   margin-top: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 /* =========================================================
-   Code Block Header (language + copy button)
+   Header
    ========================================================= */
 .code-header {
   display: flex;
@@ -24,135 +22,96 @@
   font-size: 12px;
 }
 
-/* Copy button */
-.code-header button {
-  background: transparent;
-  border: 1px solid #334155;
-  color: #e5e7eb;
-  padding: 4px 8px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.code-header button:hover {
-  background: #1e293b;
+/* Language label */
+.code-lang {
+  opacity: 0.75;
+  text-transform: lowercase;
+  letter-spacing: 0.3px;
 }
 
 /* =========================================================
-   Prism Code Area
-   IMPORTANT:
-   - These styles MUST be scoped under .code-wrapper
-   - Never style global `pre` or `code`
-   - Prevents breaking Prism token colors
+   Copy Button
+   ========================================================= */
+.copy-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #e5e7eb;
+
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.1s ease;
+}
+
+.copy-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.copy-btn:active {
+  transform: scale(0.96);
+}
+
+/* ✅ Copied state — VERY CLEAR FEEDBACK */
+.copy-btn.copied {
+  background: #16a34a;
+  border-color: #16a34a;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/* =========================================================
+   Prism Area (SCOPED)
    ========================================================= */
 .code-wrapper pre {
   margin: 0;
   padding: 16px;
   overflow-x: auto;
   font-size: 13px;
-  background: transparent; /* Prism theme handles background */
+  background: transparent;
 }
 
-/* Code font only (do NOT override colors) */
+/* Code font only — DO NOT TOUCH COLORS */
 .code-wrapper code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.55;
 }
 
 /* =========================================================
-   Optional polish (safe)
+   Scrollbar (Horizontal)
    ========================================================= */
-
-/* Smooth horizontal scrolling */
 .code-wrapper pre::-webkit-scrollbar {
   height: 8px;
 }
 
 .code-wrapper pre::-webkit-scrollbar-thumb {
-  background: #334155;
+  background: rgba(255, 255, 255, 0.25);
   border-radius: 4px;
 }
 
 .code-wrapper pre::-webkit-scrollbar-track {
   background: transparent;
 }
-/* =========================================================
-   Code Block Wrapper
-   ---------------------------------------------------------
-   - Contains Prism-highlighted code
-   - Scoped to avoid leaking styles into chat UI
-   ========================================================= */
-.code-wrapper {
-  background: #0f172a;
-  border-radius: 12px;
-  overflow: hidden;
-  margin-top: 12px;
-}
 
 /* =========================================================
-   Code Block Header (language + copy button)
+   Light Mode Override (AUTOMATIC)
    ========================================================= */
-.code-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 12px;
+html:not([data-theme='dark']) .code-wrapper {
+  background: #0f172a; /* keep dark like ChatGPT */
+}
+
+html:not([data-theme='dark']) .code-header {
   background: #020617;
   color: #e5e7eb;
-  font-size: 12px;
 }
 
-/* Copy button */
-.code-header button {
-  background: transparent;
-  border: 1px solid #334155;
+html:not([data-theme='dark']) .copy-btn {
   color: #e5e7eb;
-  padding: 4px 8px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.code-header button:hover {
-  background: #1e293b;
-}
-
-/* =========================================================
-   Prism Code Area
-   IMPORTANT:
-   - These styles MUST be scoped under .code-wrapper
-   - Never style global `pre` or `code`
-   - Prevents breaking Prism token colors
-   ========================================================= */
-.code-wrapper pre {
-  margin: 0;
-  padding: 16px;
-  overflow-x: auto;
-  font-size: 13px;
-  background: transparent; /* Prism theme handles background */
-}
-
-/* Code font only (do NOT override colors) */
-.code-wrapper code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-/* =========================================================
-   Optional polish (safe)
-   ========================================================= */
-
-/* Smooth horizontal scrolling */
-.code-wrapper pre::-webkit-scrollbar {
-  height: 8px;
-}
-
-.code-wrapper pre::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 4px;
-}
-
-.code-wrapper pre::-webkit-scrollbar-track {
-  background: transparent;
 }

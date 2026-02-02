@@ -14,11 +14,16 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   const inputRef = useRef(null)
   const prevMessageCountRef = useRef(0)
 
+  // 🔥 assistant copy feedback (per message)
+  const [copiedMsgId, setCopiedMsgId] = useState(null)
+
   const focusInput = () => {
     requestAnimationFrame(() => {
       inputRef.current?.focus({ preventScroll: true })
     })
   }
+
+  /* ================= SCROLL ================= */
 
   useEffect(() => {
     const prev = prevMessageCountRef.current
@@ -34,9 +39,12 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
     prevMessageCountRef.current = curr
   }, [messages])
 
+  /* ================= CONVERSATION ================= */
+
   useEffect(() => {
     const previousId = conversationIdRef.current
 
+    // new chat
     if (previousId && activeConversationId === null) {
       conversationIdRef.current = null
       setMessages([])
@@ -45,13 +53,16 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
       return
     }
 
+    // first conversation id
     if (!previousId && activeConversationId) {
       conversationIdRef.current = activeConversationId
       return
     }
 
+    // same conversation
     if (previousId === activeConversationId) return
 
+    // switch conversation
     if (previousId && activeConversationId) {
       conversationIdRef.current = activeConversationId
       setMessages([])
@@ -62,11 +73,17 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
         .then(res => setMessages(res.messages || []))
         .catch(() => {
           setMessages([
-            { id: 'error', role: 'assistant', message: 'Failed to load conversation.' }
+            {
+              id: 'error',
+              role: 'assistant',
+              message: 'Failed to load conversation.'
+            }
           ])
         })
     }
   }, [activeConversationId])
+
+  /* ================= RENDER MESSAGE ================= */
 
   const renderMessage = (text) => {
     if (!text) return null
@@ -74,27 +91,43 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
     const blocks = text.split(/```/g)
 
     return blocks.map((block, index) => {
+      // code block
       if (index % 2 === 1) {
         const lines = block.split('\n')
         return (
           <CodeBlock
-            key={index}
+            key={`code-${index}-${lines.slice(1).join('\n').length}`}
             language={lines[0]?.trim()}
             code={lines.slice(1).join('\n')}
           />
         )
       }
 
+      // normal text
       return block.split('\n').map((line, i) => (
-        <div key={`${index}-${i}`} className="msg-line">
+        <div key={`line-${index}-${i}`} className="msg-line">
           {line || <span className="msg-spacer" />}
         </div>
       ))
     })
   }
 
+  /* ================= COPY ASSISTANT ================= */
+
+  const copyAssistantText = (msgId, text) => {
+    if (!text) return
+
+    const cleaned = text.replace(/```[\s\S]*?```/g, '').trim()
+    navigator.clipboard.writeText(cleaned)
+
+    setCopiedMsgId(msgId)
+    setTimeout(() => setCopiedMsgId(null), 1200)
+  }
+
+  /* ================= SEND ================= */
+
   const handleSend = async (e) => {
-    e.preventDefault()
+    if (e) e.preventDefault()
     if (!inputMessage.trim() || loading) return
 
     const userText = inputMessage.trim()
@@ -140,9 +173,13 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   const showWelcome =
     activeConversationId === null && messages.length === 0
 
+  /* ================= UI ================= */
+
   return (
     <div className="chatbot-container">
       <div className={`messages-container ${showWelcome ? 'centered' : ''}`}>
+
+        {/* ✅ WELCOME HERO */}
         {showWelcome && (
           <div className="message assistant welcome">
             <div className="message-content">
@@ -154,7 +191,22 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
         {messages.map(msg => (
           <div key={msg.id} className={`message ${msg.role}`}>
             <div className="message-content">
+
+              {/* Assistant copy button */}
+              {msg.role === 'assistant' && msg.message && (
+                <button
+                  className={`assistant-copy-btn ${
+                    copiedMsgId === msg.id ? 'copied' : ''
+                  }`}
+                  onClick={() => copyAssistantText(msg.id, msg.message)}
+                  aria-label="Copy response"
+                >
+                  {copiedMsgId === msg.id ? 'Copied ✓' : 'Copy'}
+                </button>
+              )}
+
               {renderMessage(msg.message)}
+
               {msg.id === streamingIdRef.current && (
                 <span className="cursor">▍</span>
               )}
@@ -165,7 +217,7 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* 🔥 NOT A FORM — PREVENT SAFARI UI */}
+      {/* INPUT */}
       <div className="input-container">
         <textarea
           ref={inputRef}
@@ -173,19 +225,17 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
           value={inputMessage}
           placeholder="Ask StackMind…"
           disabled={loading}
-
           inputMode="text"
           enterKeyHint="send"
           autoCorrect="off"
           autoCapitalize="off"
           autoComplete="off"
           spellCheck={false}
-
           onChange={(e) => setInputMessage(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
-              handleSend(e)
+              handleSend()
             }
           }}
         />
