@@ -65,35 +65,29 @@
 .message.assistant.welcome .message-content {
   position: relative;
   overflow: hidden;
-
   max-width: 520px;
   padding: 22px 32px;
   border-radius: 26px;
-
   backdrop-filter: blur(22px);
   -webkit-backdrop-filter: blur(22px);
-
   box-shadow:
     0 30px 60px rgba(0, 0, 0, 0.25),
     inset 0 0 0 1px rgba(255, 255, 255, 0.25);
-
   color: #ffffff;
   font-size: 18px;
   font-weight: 600;
   line-height: 1.6;
   text-align: center;
-
   animation: welcomeFloat 6s ease-in-out infinite;
   transform: translateZ(0);
 }
 
-/* 🌊 ACTUAL ANIMATED GRADIENT LAYER */
+/* Animated gradient layer */
 .message.assistant.welcome .message-content::before {
   content: '';
   position: absolute;
   inset: -40%;
   z-index: -1;
-
   background: linear-gradient(
     135deg,
     #ff9a8b,
@@ -101,70 +95,46 @@
     #c77dff,
     #fcd34d
   );
-
   background-size: 400% 400%;
   animation: gradientWave 5s ease infinite;
-
   will-change: background-position, transform;
-  transform: translateZ(0);
 }
 
-/* ✨ Glass shimmer */
+/* Glass shimmer */
 .message.assistant.welcome .message-content::after {
   content: '';
   position: absolute;
   inset: 0;
-
   background: linear-gradient(
     120deg,
     transparent 30%,
     rgba(255, 255, 255, 0.35),
     transparent 70%
   );
-
   opacity: 0.25;
   transform: translateX(-120%);
   animation: shimmerWave 7s ease-in-out infinite;
-
   pointer-events: none;
 }
 
 /* ================= ANIMATIONS ================= */
 
 @keyframes gradientWave {
-  0% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-  100% {
-    background-position: 0% 50%;
-  }
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 
 @keyframes shimmerWave {
-  0% {
-    transform: translateX(-120%);
-  }
-  50% {
-    transform: translateX(120%);
-  }
-  100% {
-    transform: translateX(120%);
-  }
+  0% { transform: translateX(-120%); }
+  50% { transform: translateX(120%); }
+  100% { transform: translateX(120%); }
 }
 
 @keyframes welcomeFloat {
-  0% {
-    transform: translateY(0px);
-  }
-  50% {
-    transform: translateY(-6px);
-  }
-  100% {
-    transform: translateY(0px);
-  }
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+  100% { transform: translateY(0px); }
 }
 
 /* ================= NORMAL BUBBLES ================= */
@@ -202,6 +172,7 @@
   display: flex;
   gap: 12px;
   padding: 16px 20px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
   background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(14px);
   border-top: 1px solid var(--border-subtle);
@@ -245,7 +216,5 @@
 }
 
 @keyframes blink {
-  50% {
-    opacity: 0;
-  }
+  50% { opacity: 0; }
 }

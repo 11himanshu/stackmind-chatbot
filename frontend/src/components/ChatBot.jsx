@@ -16,6 +16,8 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
 
+  const prevMessageCountRef = useRef(0)
+
   // =========================================================
   // Focus input safely
   // =========================================================
@@ -26,14 +28,35 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   }
 
   // =========================================================
-  // Scroll to bottom
+  // Scroll handling (SAFE, NO CONVERSATION IMPACT)
   // =========================================================
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const prev = prevMessageCountRef.current
+    const curr = messages.length
+
+    // First message: hard anchor to avoid jump
+    if (prev === 0 && curr > 0) {
+      requestAnimationFrame(() => {
+        messagesEndRef.current?.scrollIntoView({
+          block: 'end',
+          behavior: 'auto'
+        })
+      })
+    }
+
+    // Subsequent messages: keep pinned to bottom
+    if (prev > 0 && curr > prev) {
+      messagesEndRef.current?.scrollIntoView({
+        block: 'end',
+        behavior: 'auto'
+      })
+    }
+
+    prevMessageCountRef.current = curr
   }, [messages])
 
   // =========================================================
-  // Handle conversation changes (FINAL LOGIC)
+  // Handle conversation changes (ORIGINAL, UNTOUCHED LOGIC)
   // =========================================================
   useEffect(() => {
     const previousId = conversationIdRef.current
@@ -43,6 +66,7 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
       conversationIdRef.current = null
       streamingIdRef.current = null
       setMessages([])
+      prevMessageCountRef.current = 0
       focusInput()
       return
     }
@@ -56,11 +80,12 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
     // 3️⃣ Same conversation (id → id)
     if (previousId === activeConversationId) return
 
-    // 4️⃣ Switching between existing conversations (id1 → id2)
+    // 4️⃣ Switching between existing conversations
     if (previousId && activeConversationId) {
       conversationIdRef.current = activeConversationId
       streamingIdRef.current = null
       setMessages([])
+      prevMessageCountRef.current = 0
       focusInput()
 
       fetchConversationHistory(activeConversationId)
@@ -119,7 +144,6 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
     setInputMessage('')
     setLoading(true)
 
-    // Add user + streaming assistant placeholder
     setMessages(prev => [
       ...prev,
       {
@@ -139,7 +163,6 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
         userText,
         conversationIdRef.current,
 
-        // stream chunk
         (chunk) => {
           setMessages(prev =>
             prev.map(msg =>
@@ -150,7 +173,6 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
           )
         },
 
-        // meta
         (meta) => {
           if (!conversationIdRef.current && meta?.conversation_id) {
             conversationIdRef.current = meta.conversation_id

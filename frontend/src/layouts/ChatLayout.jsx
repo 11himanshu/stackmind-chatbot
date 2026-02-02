@@ -74,10 +74,12 @@ const ChatLayout = () => {
   return (
     <div
       style={{
-        height: '100dvh',
+        height: '100vh',
         width: '100%',
         background: 'var(--bg-surface)',
-        overflow: 'hidden'
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column'
       }}
     >
       {/* ================= FIXED HEADER ================= */}
@@ -114,7 +116,8 @@ const ChatLayout = () => {
               fontSize: 18,
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center'
+              justifyContent: 'center',
+              color: theme === 'dark' ? '#ffffff' : '#0f172a'
             }}
           >
             ☰
@@ -217,7 +220,7 @@ const ChatLayout = () => {
       <div
         style={{
           paddingTop: HEADER_HEIGHT,
-          height: `calc(100dvh - ${HEADER_HEIGHT}px)`,
+          flex: 1,
           display: 'flex',
           overflow: 'hidden'
         }}
