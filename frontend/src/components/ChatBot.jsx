@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { chatStream, fetchConversationHistory } from '../services/api'
 import CodeBlock from './CodeBlock.jsx'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import './ChatBot.css'
 
 const ChatBot = ({ activeConversationId, onConversationCreated }) => {
@@ -14,7 +16,6 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   const inputRef = useRef(null)
   const prevMessageCountRef = useRef(0)
 
-  // 🔥 assistant copy feedback (per message)
   const [copiedMsgId, setCopiedMsgId] = useState(null)
 
   const focusInput = () => {
@@ -44,7 +45,6 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   useEffect(() => {
     const previousId = conversationIdRef.current
 
-    // new chat
     if (previousId && activeConversationId === null) {
       conversationIdRef.current = null
       setMessages([])
@@ -53,16 +53,13 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
       return
     }
 
-    // first conversation id
     if (!previousId && activeConversationId) {
       conversationIdRef.current = activeConversationId
       return
     }
 
-    // same conversation
     if (previousId === activeConversationId) return
 
-    // switch conversation
     if (previousId && activeConversationId) {
       conversationIdRef.current = activeConversationId
       setMessages([])
@@ -83,33 +80,38 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
     }
   }, [activeConversationId])
 
-  /* ================= RENDER MESSAGE ================= */
+  /* ================= RENDER MESSAGE (MARKDOWN) ================= */
 
   const renderMessage = (text) => {
     if (!text) return null
 
-    const blocks = text.split(/```/g)
+    return (
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          code({ inline, className, children }) {
+            const match = /language-(\w+)/.exec(className || '')
 
-    return blocks.map((block, index) => {
-      // code block
-      if (index % 2 === 1) {
-        const lines = block.split('\n')
-        return (
-          <CodeBlock
-            key={`code-${index}-${lines.slice(1).join('\n').length}`}
-            language={lines[0]?.trim()}
-            code={lines.slice(1).join('\n')}
-          />
-        )
-      }
+            if (!inline && match) {
+              return (
+                <CodeBlock
+                  language={match[1]}
+                  code={String(children).replace(/\n$/, '')}
+                />
+              )
+            }
 
-      // normal text
-      return block.split('\n').map((line, i) => (
-        <div key={`line-${index}-${i}`} className="msg-line">
-          {line || <span className="msg-spacer" />}
-        </div>
-      ))
-    })
+            return (
+              <code className="inline-code">
+                {children}
+              </code>
+            )
+          }
+        }}
+      >
+        {text}
+      </ReactMarkdown>
+    )
   }
 
   /* ================= COPY ASSISTANT ================= */
@@ -179,7 +181,6 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
     <div className="chatbot-container">
       <div className={`messages-container ${showWelcome ? 'centered' : ''}`}>
 
-        {/* ✅ WELCOME HERO */}
         {showWelcome && (
           <div className="message assistant welcome">
             <div className="message-content">
@@ -192,7 +193,6 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
           <div key={msg.id} className={`message ${msg.role}`}>
             <div className="message-content">
 
-              {/* Assistant copy button */}
               {msg.role === 'assistant' && msg.message && (
                 <button
                   className={`assistant-copy-btn ${
@@ -217,7 +217,6 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* INPUT */}
       <div className="input-container">
         <textarea
           ref={inputRef}

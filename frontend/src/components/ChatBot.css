@@ -176,7 +176,7 @@
   border-radius: 6px;
   border: 1px solid var(--border-subtle);
   background: rgba(255, 255, 255, 0.85);
-  color: #000000; /* 🔥 ALWAYS BLACK */
+  color: #000000;
   cursor: pointer;
   opacity: 0;
   transition:
@@ -194,7 +194,6 @@
   transform: scale(0.96);
 }
 
-/* ✅ COPIED STATE (GREEN + TICK) */
 .assistant-copy-btn.copied {
   background: #16a34a;
   border-color: #16a34a;
@@ -202,26 +201,58 @@
   font-weight: 600;
 }
 
-/* Mobile: always visible */
 @media (hover: none) {
   .assistant-copy-btn {
     opacity: 1;
   }
 }
 
-/* ================= MARKDOWN ================= */
+/* ================= MARKDOWN CONTENT ================= */
 
-.msg-line {
-  line-height: 1.7;
-  margin-bottom: 6px;
+.message-content p {
+  margin: 0 0 10px;
 }
 
-.msg-line:last-child {
+.message-content p:last-child {
   margin-bottom: 0;
 }
 
-.msg-spacer {
-  height: 10px;
+.message-content ul,
+.message-content ol {
+  padding-left: 20px;
+  margin: 8px 0;
+}
+
+.message-content li {
+  margin-bottom: 6px;
+}
+
+.message-content strong {
+  font-weight: 600;
+}
+
+.message-content em {
+  font-style: italic;
+}
+
+.message-content a {
+  color: #6366f1;
+  text-decoration: underline;
+}
+
+.message-content h1,
+.message-content h2,
+.message-content h3 {
+  margin: 12px 0 8px;
+  font-weight: 600;
+}
+
+.inline-code {
+  background: rgba(0, 0, 0, 0.08);
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 0.95em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 /* ================= INPUT ================= */
