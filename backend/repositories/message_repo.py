@@ -9,6 +9,13 @@ def fetch_history(
     conversation_id: int,
     user_id: int
 ):
+    """
+    Fetch full conversation history in chronological order.
+
+    Guarantees:
+    - Only messages belonging to the user
+    - Ordered for correct context reconstruction
+    """
     return (
         db.query(Message)
         .join(Conversation)
@@ -26,8 +33,32 @@ def save_messages(
     *,
     conversation_id: int,
     user_message: str,
-    assistant_message: str
+    assistant_message: str,
+    # ------------------------------------------------
+    # Optional (future-safe, not persisted yet)
+    # ------------------------------------------------
+    normalized_user_message: str | None = None,
+    is_followup: bool | None = None
 ):
+    """
+    Persist user + assistant messages.
+
+    IMPORTANT DESIGN RULES:
+    - user_message is ALWAYS the raw user input
+    - assistant_message is ONLY what the assistant replied
+    - normalized_user_message is NOT stored yet
+      (used only for routing / tools / LLM)
+    - is_followup is NOT stored yet
+      (kept for future analytics / UI)
+
+    This function is intentionally backward-compatible.
+    """
+
+    # NOTE:
+    # We intentionally do NOT persist normalized_user_message
+    # or is_followup to avoid polluting conversation history.
+    # These will be added later via metadata or a separate table.
+
     db.add_all([
         Message(
             conversation_id=conversation_id,
@@ -47,6 +78,13 @@ def delete_messages(
     *,
     conversation_id: int
 ):
+    """
+    Hard delete all messages for a conversation.
+
+    Used when:
+    - Conversation is deleted
+    - Reset / cleanup flows
+    """
     db.query(Message).filter(
         Message.conversation_id == conversation_id
     ).delete(synchronize_session=False)

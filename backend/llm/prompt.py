@@ -1,16 +1,9 @@
-import os
-import requests
-from dotenv import load_dotenv
-
 from core.logger import get_logger
 
-load_dotenv()
 logger = get_logger(__name__)
 
-ENABLE_WEB_SEARCH = os.getenv("ENABLE_WEB_SEARCH", "false").lower() == "true"
-
 # ============================================================
-# BASE PROMPT (stable, minimal, identity-safe)
+# BASE PROMPT (agent-safe, tool-aware)
 # ============================================================
 
 BASE_PROMPT = """
@@ -26,144 +19,184 @@ Identity rules:
 Core behavior:
 - Be helpful, calm, intelligent, and precise.
 - Prefer correctness over sounding impressive.
-- Never hallucinate facts, APIs, tools, events, or capabilities.
-- If unsure, say so clearly and explain what is known vs unknown.
+- Never hallucinate facts.
+
+IMPORTANT TOOL RULES:
+- When external tool data is provided, treat it as current and authoritative.
+- Do NOT mention model limitations, training data, or internet access.
+- Do NOT mention tools, external context, or how information was obtained.
+- Do NOT suggest checking websites or apps when tool data is available.
+- If some details are missing from tool data, state what is missing, not why.
 
 Response quality rules:
-- Be concise but complete. Avoid unnecessary verbosity.
-- Group related ideas instead of listing everything separately.
-- Use clear sections when it improves readability.
+- Be concise but complete.
 - Explain the “why” briefly, not just the “what”.
-- Avoid repetitive or redundant points.
-- Long lists are allowed only when they add real value.
-
-Tone:
-- Sound like a thoughtful engineer explaining to another smart human.
-- Never defensive, preachy, or overconfident.
-- Do not oversell abilities or claim guarantees.
+- Avoid unnecessary repetition.
 """
 
 # ============================================================
-# INTENT DETECTION (lightweight, deterministic)
+# DOMAIN KEYWORDS (EXTENSIBLE, NOT ENTITY-BASED)
 # ============================================================
 
-def detect_intent(message: str) -> str:
+REAL_TIME_DOMAINS = {
+    "sports": [
+        "match", "score", "result", "won", "lost",
+        "t20", "odi", "test", "ipl", "world cup",
+        "captain", "coach", "playing", "retired"
+    ],
+    "politics": [
+        "election", "government", "minister",
+        "president", "prime minister", "pm",
+        "policy", "bill", "parliament"
+    ],
+    "business": [
+        "ceo", "company", "startup", "layoffs",
+        "funding", "acquisition", "merger"
+    ],
+    "entertainment": [
+        "movie", "film", "release", "trailer",
+        "box office", "series", "season"
+    ],
+    "music": [
+        "song", "album", "track", "release",
+        "concert", "tour"
+    ],
+    "tech": [
+        "launch", "released", "update",
+        "iphone", "android", "ai model"
+    ],
+    "finance": [
+        "stock", "market", "price", "share",
+        "crypto", "bitcoin", "sensex", "nifty",
+        "interest rate"
+    ],
+    "weather": [
+        "weather", "temperature", "rain",
+        "storm", "forecast"
+    ]
+}
+
+# ============================================================
+# TEMPORAL / STATE-CHANGE VERBS (CRITICAL)
+# ============================================================
+
+STATE_CHANGE_VERBS = [
+    "is", "are", "was", "were",
+    "still", "currently",
+    "retired", "playing", "resigned",
+    "appointed", "removed", "quit",
+    "won", "lost", "ended",
+    "released", "launched"
+]
+
+TIME_REFERENCE_TERMS = [
+    "last", "latest", "recent", "new",
+    "current", "today", "now",
+    "this year", "this month", "yesterday"
+]
+
+# ============================================================
+# REQUEST ANALYZER (AUTHORITATIVE)
+# ============================================================
+
+def analyze_request(message: str) -> dict:
+    """
+    Analyze the user message to determine:
+    - intent
+    - knowledge freshness (static | real_time | system)
+    - domain
+
+    Design principle:
+    If the answer can be wrong without up-to-date information,
+    default to real_time.
+    """
+
     msg = message.lower()
 
+    # -----------------------------
+    # System-level questions
+    # -----------------------------
     if any(k in msg for k in [
-        "architecture", "flow", "diagram", "how does",
-        "working of", "explain docker", "kubernetes",
-        "oauth", "system design"
+        "current time", "time now",
+        "today's date", "date today"
     ]):
-        return "visual_explanation"
+        return {
+            "intent": "system",
+            "knowledge_freshness": "system",
+            "domain": "system"
+        }
 
-    if any(k in msg for k in [
-        "latest", "today", "current", "news",
-        "internet", "search", "online"
-    ]):
-        return "live_data"
+    # -----------------------------
+    # Domain detection
+    # -----------------------------
+    detected_domain = "general"
+    for domain, keywords in REAL_TIME_DOMAINS.items():
+        if any(k in msg for k in keywords):
+            detected_domain = domain
+            break
 
+    # -----------------------------
+    # Temporal reasoning
+    # -----------------------------
+    has_state_change = any(k in msg for k in STATE_CHANGE_VERBS)
+    has_time_reference = any(k in msg for k in TIME_REFERENCE_TERMS)
+
+    # -----------------------------
+    # Real-time decision rule
+    # -----------------------------
+    if (
+        detected_domain != "general"
+        and (has_state_change or has_time_reference)
+    ):
+        return {
+            "intent": "lookup",
+            "knowledge_freshness": "real_time",
+            "domain": detected_domain
+        }
+
+    if has_time_reference:
+        
+        return {
+            "intent": "lookup",
+            "knowledge_freshness": "real_time",
+            "domain": detected_domain
+        }
+    
+    # -----------------------------
+    # Debugging / explanation
+    # -----------------------------
     if any(k in msg for k in [
         "error", "exception", "traceback",
         "bug", "not working", "fails"
     ]):
-        return "debugging"
+        return {
+            "intent": "debugging",
+            "knowledge_freshness": "static",
+            "domain": "general"
+        }
 
-    return "general"
+    # -----------------------------
+    # Default: timeless knowledge
+    # -----------------------------
+    
+    return {
+        "intent": "general",
+        "knowledge_freshness": "static",
+        "domain": "general"
+    }
 
 # ============================================================
-# SAFE WEB SEARCH (SERPAPI / BING)
+# SYSTEM PROMPT BUILDER
 # ============================================================
 
-def safe_web_search(query: str) -> str:
+def build_system_prompt(message: str | None = None) -> str:
     """
-    Performs a limited, read-only web search.
-    Returns summarized text only.
-    Never returns raw URLs to the LLM.
+    Build the system prompt.
+
+    NOTE:
+    - message is accepted for backward compatibility
+    - prompt does NOT depend on message content
+    - tool data is injected separately by the LLM layer
     """
-
-    if not ENABLE_WEB_SEARCH:
-        return ""
-
-    api_key = os.getenv("SERPAPI_API_KEY")
-    if not api_key:
-        logger.warning("SERPAPI_API_KEY missing")
-        return ""
-
-    try:
-        logger.info("Performing safe web search")
-
-        response = requests.get(
-            "https://serpapi.com/search",
-            params={
-                "q": query,
-                "engine": "bing",
-                "api_key": api_key,
-                "num": 5
-            },
-            timeout=8
-        )
-        response.raise_for_status()
-        data = response.json()
-
-        snippets = []
-        for r in data.get("organic_results", [])[:3]:
-            snippet = r.get("snippet")
-            if snippet:
-                snippets.append(snippet)
-
-        return "\n".join(snippets)
-
-    except Exception as e:
-        logger.error("Web search failed: %s", e)
-        return ""
-
-# ============================================================
-# DYNAMIC SYSTEM PROMPT BUILDER
-# ============================================================
-
-def build_system_prompt(message: str) -> str:
-    intent = detect_intent(message)
-
-    web_context = ""
-    if intent == "live_data":
-        web_context = safe_web_search(message)
-
-    behavior = ""
-
-    if intent == "visual_explanation":
-        behavior = """
-Explain using intuition first, then details.
-Images may be included only if they genuinely improve understanding.
-Use at most one image.
-Avoid textbook tone.
-"""
-
-    elif intent == "live_data":
-        behavior = """
-You do not have live internet access.
-State this limitation briefly in one sentence.
-Immediately offer alternatives:
-- explain known concepts
-- help frame a good search
-- reason from general knowledge
-Do not overemphasize the limitation.
-"""
-
-    elif intent == "debugging":
-        behavior = """
-Focus on practical reasoning.
-Ask at most one clarifying question if needed.
-Do not include images or emojis.
-"""
-
-    else:
-        behavior = """
-Be clear and concise.
-Emojis are allowed, but at most one, and only if they add warmth.
-"""
-
-    if web_context:
-        return BASE_PROMPT + "\n" + behavior + "\n\nKnown context:\n" + web_context
-
-    return BASE_PROMPT + "\n" + behavior
+    
+    return BASE_PROMPT

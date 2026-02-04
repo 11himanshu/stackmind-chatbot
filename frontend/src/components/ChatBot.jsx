@@ -6,9 +6,14 @@ import remarkGfm from 'remark-gfm'
 import './ChatBot.css'
 
 const ChatBot = ({ activeConversationId, onConversationCreated }) => {
+  /* ================= STATE ================= */
+
   const [messages, setMessages] = useState([])
   const [inputMessage, setInputMessage] = useState('')
   const [loading, setLoading] = useState(false)
+
+  // Controls welcome hero fade-out
+  const [hideWelcome, setHideWelcome] = useState(false)
 
   const conversationIdRef = useRef(activeConversationId)
   const streamingIdRef = useRef(null)
@@ -48,6 +53,7 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
     if (previousId && activeConversationId === null) {
       conversationIdRef.current = null
       setMessages([])
+      setHideWelcome(false)
       prevMessageCountRef.current = 0
       focusInput()
       return
@@ -63,6 +69,7 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
     if (previousId && activeConversationId) {
       conversationIdRef.current = activeConversationId
       setMessages([])
+      setHideWelcome(true)
       prevMessageCountRef.current = 0
       focusInput()
 
@@ -80,7 +87,7 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
     }
   }, [activeConversationId])
 
-  /* ================= RENDER MESSAGE (MARKDOWN) ================= */
+  /* ================= MARKDOWN ================= */
 
   const renderMessage = (text) => {
     if (!text) return null
@@ -114,7 +121,7 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
     )
   }
 
-  /* ================= COPY ASSISTANT ================= */
+  /* ================= COPY ================= */
 
   const copyAssistantText = (msgId, text) => {
     if (!text) return
@@ -135,6 +142,9 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
     const userText = inputMessage.trim()
     const streamingId = crypto.randomUUID()
     streamingIdRef.current = streamingId
+
+    // Trigger welcome fade-out ON FIRST USER ACTION
+    setHideWelcome(true)
 
     setInputMessage('')
     setLoading(true)
@@ -172,8 +182,10 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
     }
   }
 
+  /* ================= WELCOME VISIBILITY ================= */
+
   const showWelcome =
-    activeConversationId === null && messages.length === 0
+    activeConversationId === null && !hideWelcome
 
   /* ================= UI ================= */
 
@@ -181,42 +193,63 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
     <div className="chatbot-container">
       <div className={`messages-container ${showWelcome ? 'centered' : ''}`}>
 
+        {/* ===== WELCOME HERO ===== */}
         {showWelcome && (
-          <div className="message assistant welcome">
+          <div className={`message assistant welcome ${hideWelcome ? 'fade-out' : ''}`}>
             <div className="message-content">
-              Nice to meet you. What&apos;s on your mind today?
+              Nice to meet you. What’s on your mind today?
             </div>
           </div>
         )}
 
-        {messages.map(msg => (
-          <div key={msg.id} className={`message ${msg.role}`}>
-            <div className="message-content">
+        {/* ===== CHAT MESSAGES ===== */}
+        {messages.map(msg => {
+          const isStreaming = msg.id === streamingIdRef.current
 
-              {msg.role === 'assistant' && msg.message && (
-                <button
-                  className={`assistant-copy-btn ${
-                    copiedMsgId === msg.id ? 'copied' : ''
-                  }`}
-                  onClick={() => copyAssistantText(msg.id, msg.message)}
-                  aria-label="Copy response"
-                >
-                  {copiedMsgId === msg.id ? 'Copied ✓' : 'Copy'}
-                </button>
-              )}
+          return (
+            <div
+              key={msg.id}
+              className={`message ${msg.role} ${isStreaming ? 'streaming' : ''}`}
+            >
+              <div className="message-content">
 
-              {renderMessage(msg.message)}
+                {/* THINKING INDICATOR — ABOVE TEXT */}
+                {msg.role === 'assistant' && isStreaming && (
+                  <div className="thinking">
+                    <span className="thinking-dot" />
+                    <span className="thinking-dot" />
+                    <span className="thinking-dot" />
+                    <span>Generating</span>
+                  </div>
+                )}
 
-              {msg.id === streamingIdRef.current && (
-                <span className="cursor">▍</span>
-              )}
+                {/* COPY BUTTON */}
+                {msg.role === 'assistant' && msg.message && (
+                  <button
+                    className={`assistant-copy-btn ${
+                      copiedMsgId === msg.id ? 'copied' : ''
+                    }`}
+                    onClick={() => copyAssistantText(msg.id, msg.message)}
+                    aria-label="Copy response"
+                  >
+                    {copiedMsgId === msg.id ? 'Copied ✓' : 'Copy'}
+                  </button>
+                )}
+
+                {renderMessage(msg.message)}
+
+                {isStreaming && (
+                  <span className="cursor">▍</span>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
 
         <div ref={messagesEndRef} />
       </div>
 
+      {/* ===== INPUT ===== */}
       <div className="input-container">
         <textarea
           ref={inputRef}

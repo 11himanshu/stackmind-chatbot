@@ -12,6 +12,9 @@ import 'prismjs/components/prism-docker'
 
 import '../styles/code.css'
 
+/* --------------------------------------------------
+   Language normalization (unchanged logic)
+-------------------------------------------------- */
 const normalizeLanguage = (lang) => {
   if (!lang) return 'text'
   const l = lang.toLowerCase()
@@ -25,35 +28,57 @@ const normalizeLanguage = (lang) => {
 
 const CodeBlock = ({ language, code }) => {
   const codeRef = useRef(null)
+  const copyBtnRef = useRef(null) // ADDED: accessibility focus restore
   const [copied, setCopied] = useState(false)
+  const [mounted, setMounted] = useState(false) // ADDED: render polish
 
   const lang = normalizeLanguage(language)
 
+  /* --------------------------------------------------
+     Prism highlight (safer timing, no behavior change)
+  -------------------------------------------------- */
   useEffect(() => {
-    if (codeRef.current) {
+    if (!codeRef.current) return
+
+    // ADDED: ensure DOM paint before Prism runs
+    requestAnimationFrame(() => {
       Prism.highlightElement(codeRef.current)
-    }
+      setMounted(true)
+    })
   }, [code, lang])
 
+  /* --------------------------------------------------
+     Copy handler (logic unchanged, polish added)
+  -------------------------------------------------- */
   const handleCopy = async () => {
     if (!code) return
+
     await navigator.clipboard.writeText(code)
     setCopied(true)
+
+    // ADDED: return focus for keyboard users
+    if (copyBtnRef.current) {
+      copyBtnRef.current.focus()
+    }
+
     setTimeout(() => setCopied(false), 1200)
   }
 
   return (
-    <div className="code-wrapper">
+    <div
+      className={`code-wrapper ${mounted ? 'code-mounted' : ''}`} // ADDED: fade-in hook
+    >
       <div className="code-header">
         <span className="code-lang">{lang}</span>
 
         <button
+          ref={copyBtnRef}
           type="button"
           aria-label="Copy code"
           className={`copy-btn ${copied ? 'copied' : ''}`}
           onClick={handleCopy}
         >
-          {copied ? 'Copied ✓' : 'Copy'}
+          {copied ? 'Copied' : 'Copy'}
         </button>
       </div>
 
