@@ -12,26 +12,36 @@ from tools.safety import post_process_response
 logger = get_logger(__name__)
 
 # ----------------------------------------------------
-# FOLLOW-UP DETECTION CONFIG (STRICT)
+# FOLLOW-UP SIGNAL CONFIG (STRICT)
 # ----------------------------------------------------
 
 FOLLOWUP_PRONOUNS = {
-    "it", "this", "that", "he", "she", "they",
-    "him", "her", "them", "those"
+    "it", "this", "that", "they", "them", "those", "he", "she"
 }
 
-VAGUE_CONTINUATIONS = {
-    "and", "then", "continue", "next", "more"
+FOLLOWUP_PHRASES = {
+    "tell me more",
+    "continue",
+    "go on",
+    "what about that",
+    "explain that",
+    "more on this",
+    "next",
 }
 
-SHORT_QUERY_WORD_COUNT = 4
+# Requests that must NEVER be treated as follow-ups
+HARD_NEW_QUERY_PATTERNS = [
+    r"https?://",          # URLs
+    r"\bcode\b",
+    r"\bpython\b",
+    r"\bjava\b",
+    r"\bapi\b",
+    r"\berror\b",
+    r"\btable\b",
+    r"\bexcel\b",
+    r"\bfile\b",
+]
 
-# Strong indicators of a NEW topic (hard reset)
-TOPIC_RESET_KEYWORDS = {
-    "code", "python", "java", "api", "error",
-    "weather", "price", "news", "stock",
-    "youtube", "video", "link", "url"
-}
 
 # ----------------------------------------------------
 # HELPERS
@@ -44,25 +54,28 @@ def _get_last_user_message(history: list[dict]) -> Optional[str]:
     return None
 
 
-def _contains_topic_reset(message: str) -> bool:
+def _contains_hard_new_query_signal(message: str) -> bool:
     msg = message.lower()
-    return any(k in msg for k in TOPIC_RESET_KEYWORDS)
+    return any(re.search(p, msg) for p in HARD_NEW_QUERY_PATTERNS)
 
 
 def _is_potential_followup(message: str) -> bool:
+    """
+    Returns True ONLY if the message clearly depends on previous context.
+    """
+
     msg = message.lower().strip()
-    words = msg.split()
 
-    # Very short and vague
-    if len(words) <= SHORT_QUERY_WORD_COUNT:
+    # Hard stop: new task signals
+    if _contains_hard_new_query_signal(msg):
+        return False
+
+    # Explicit continuation phrases
+    if any(p in msg for p in FOLLOWUP_PHRASES):
         return True
 
-    # Pronoun-based dependency
+    # Pronoun-based reference (must be short + referential)
     if any(re.search(rf"\b{p}\b", msg) for p in FOLLOWUP_PRONOUNS):
-        return True
-
-    # Vague continuation phrases
-    if any(msg.startswith(v) for v in VAGUE_CONTINUATIONS):
         return True
 
     return False
@@ -70,25 +83,27 @@ def _is_potential_followup(message: str) -> bool:
 
 def _are_domains_compatible(prev: str, curr: str) -> bool:
     """
-    Conservative domain safety gate.
-    If domains differ, DO NOT normalize.
+    Blocks obvious task switches (politics → coding, etc.)
     """
 
-    domain_keywords = {
-        "tech": ["code", "api", "error", "bug", "python", "java"],
+    prev_l = prev.lower()
+    curr_l = curr.lower()
+
+    DOMAIN_KEYWORDS = {
+        "politics": ["prime minister", "president", "government", "minister"],
         "weather": ["weather", "temperature", "rain"],
-        "politics": ["minister", "government", "election"],
-        "media": ["song", "movie", "lyrics", "video", "youtube"],
+        "tech": ["code", "api", "bug", "python", "java"],
+        "media": ["video", "youtube", "song", "movie"],
     }
 
-    def detect(text: str) -> Optional[str]:
-        for domain, keys in domain_keywords.items():
+    def detect_domain(text: str) -> Optional[str]:
+        for domain, keys in DOMAIN_KEYWORDS.items():
             if any(k in text for k in keys):
                 return domain
         return None
 
-    prev_domain = detect(prev.lower())
-    curr_domain = detect(curr.lower())
+    prev_domain = detect_domain(prev_l)
+    curr_domain = detect_domain(curr_l)
 
     if prev_domain and curr_domain and prev_domain != curr_domain:
         return False
@@ -97,26 +112,43 @@ def _are_domains_compatible(prev: str, curr: str) -> bool:
 
 
 # ----------------------------------------------------
-# FOLLOW-UP NORMALIZATION (SAFE)
+# SUBJECT EXTRACTION
 # ----------------------------------------------------
 
-def _normalize_followup(prev: str, curr: str) -> Optional[str]:
-    """
-    Normalize ONLY if clarity improves.
-    Returns None if rewrite is unsafe.
-    """
+def _extract_subject(question: str) -> str:
+    q = question.strip().rstrip("?")
 
+    q = re.sub(
+        r"^(who|what|when|where|why|how|tell me|explain)\s+",
+        "",
+        q,
+        flags=re.IGNORECASE
+    )
+
+    return q.strip()
+
+
+# ----------------------------------------------------
+# FOLLOW-UP NORMALIZATION
+# ----------------------------------------------------
+
+def _normalize_followup(prev: str, curr: str) -> str:
+    subject = _extract_subject(prev)
     curr_l = curr.lower()
 
-    # Pronoun resolution
-    if any(p in curr_l for p in FOLLOWUP_PRONOUNS):
-        return f"{curr.strip()} ({prev.strip()})"
+    if any(k in curr_l for k in ["who", "when", "where", "why", "how"]):
+        return f"{curr.strip()} about {subject}?"
 
-    # Ultra-short vague continuation
-    if len(curr.split()) <= 3:
-        return f"{prev.strip()} — {curr.strip()}"
+    if any(k in curr_l for k in ["explain", "meaning", "details"]):
+        return f"Explain {subject}."
 
-    return None
+    if any(k in curr_l for k in ["example", "examples"]):
+        return f"Give examples related to {subject}."
+
+    if any(k in curr_l for k in ["continue", "more"]):
+        return f"Continue explaining {subject}."
+
+    return f"{curr.strip()} (context: {subject})."
 
 
 def _resolve_followup(
@@ -124,26 +156,15 @@ def _resolve_followup(
     last_user_message: Optional[str]
 ) -> tuple[str, bool]:
 
-    # No history → not a follow-up
     if not last_user_message:
         return message, False
 
-    # Hard topic reset → skip follow-up logic
-    if _contains_topic_reset(message):
-        logger.info(
-            "FOLLOWUP_SKIPPED | reason=topic_reset | message=%s",
-            message
-        )
-        return message, False
-
-    # Linguistically not a follow-up
     if not _is_potential_followup(message):
         return message, False
 
-    # Domain mismatch → unsafe
     if not _are_domains_compatible(last_user_message, message):
         logger.info(
-            "FOLLOWUP_REJECTED | reason=domain_mismatch | prev=%s | curr=%s",
+            "FOLLOWUP_REJECTED | domain_mismatch | prev=%s | curr=%s",
             last_user_message,
             message
         )
@@ -153,10 +174,6 @@ def _resolve_followup(
         prev=last_user_message,
         curr=message
     )
-
-    # Normalization did not help
-    if not normalized:
-        return message, False
 
     logger.info(
         "FOLLOWUP_NORMALIZED | raw=%s | prev=%s | normalized=%s",
@@ -196,7 +213,6 @@ def process_chat_stream_core(
                 user_id=user_id
             )
 
-        # Emit metadata once
         yield f'__META__{json.dumps({"conversation_id": conversation.id})}\n'
 
         history = fetch_history(
