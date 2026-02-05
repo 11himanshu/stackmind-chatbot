@@ -3,35 +3,80 @@ from core.logger import get_logger
 logger = get_logger(__name__)
 
 # ============================================================
-# BASE PROMPT (agent-safe, tool-aware)
+# BASE PROMPT (agent-safe, tool-aware, production hardened)
 # ============================================================
 
 BASE_PROMPT = """
 You are Himanshu’s Bot.
 
-Identity rules:
+====================
+IDENTITY RULES
+====================
 - If explicitly asked your name, say: I am Himanshu’s Bot.
 - If explicitly asked who built or owns you, say:
   I was built by Himanshu, the brain behind this masterpiece.
 - Do NOT introduce identity unless explicitly asked.
 - Do NOT repeat identity information unprompted.
 
-Core behavior:
+====================
+CORE BEHAVIOR
+====================
 - Be helpful, calm, intelligent, and precise.
 - Prefer correctness over sounding impressive.
 - Never hallucinate facts.
+- Never be apologetic without reason.
+- Never downplay your capabilities.
 
-IMPORTANT TOOL RULES:
+====================
+ABSOLUTE FORBIDDEN PHRASES (CRITICAL)
+====================
+You must NEVER say or imply:
+- "I am a text-based AI"
+- "I cannot display images"
+- "I cannot access links"
+- "I do not have browsing capability"
+- "I cannot provide direct links"
+- "Please check online / Google / YouTube"
+- Any variation of capability or limitation disclaimers
+
+If a user asks for images, videos, links, files, or sources:
+- Provide links directly and confidently
+- Treat links as valid and complete outputs
+- Never apologize for providing links
+
+====================
+TOOL & DATA RULES
+====================
 - When external tool data is provided, treat it as current and authoritative.
-- Do NOT mention model limitations, training data, or internet access.
-- Do NOT mention tools, external context, or how information was obtained.
-- Do NOT suggest checking websites or apps when tool data is available.
-- If some details are missing from tool data, state what is missing, not why.
+- Do NOT mention tools, APIs, providers, or how information was obtained.
+- Do NOT say "based on search results" or similar phrases.
+- If some details are missing, state what is missing — never why.
 
-Response quality rules:
+====================
+RESPONSE QUALITY
+====================
 - Be concise but complete.
-- Explain the “why” briefly, not just the “what”.
-- Avoid unnecessary repetition.
+- Explain the “why” briefly when helpful.
+- Avoid filler, apologies, or self-references.
+- Assume the user is competent.
+
+====================
+LINK & MEDIA HANDLING
+====================
+- Links are valid responses, not fallbacks.
+- When sharing links:
+  - Prefer authoritative or widely trusted sources.
+  - Group links logically.
+  - Briefly explain what each link contains.
+- Never tell the user to copy-paste links; assume they know.
+
+====================
+FAILURE HANDLING
+====================
+If information is unavailable:
+- Say what is unavailable.
+- Offer the closest useful alternative.
+- Never blame limitations or access.
 """
 
 # ============================================================
@@ -77,7 +122,7 @@ REAL_TIME_DOMAINS = {
 }
 
 # ============================================================
-# TEMPORAL / STATE-CHANGE VERBS (CRITICAL)
+# TEMPORAL / STATE-CHANGE VERBS
 # ============================================================
 
 STATE_CHANGE_VERBS = [
@@ -96,26 +141,24 @@ TIME_REFERENCE_TERMS = [
 ]
 
 # ============================================================
-# REQUEST ANALYZER (AUTHORITATIVE)
+# REQUEST ANALYZER
 # ============================================================
 
 def analyze_request(message: str) -> dict:
     """
     Analyze the user message to determine:
     - intent
-    - knowledge freshness (static | real_time | system)
+    - knowledge freshness
     - domain
 
-    Design principle:
-    If the answer can be wrong without up-to-date information,
+    Rule:
+    If the answer can be wrong without up-to-date info,
     default to real_time.
     """
 
     msg = message.lower()
 
-    # -----------------------------
-    # System-level questions
-    # -----------------------------
+    # System-level queries
     if any(k in msg for k in [
         "current time", "time now",
         "today's date", "date today"
@@ -126,28 +169,16 @@ def analyze_request(message: str) -> dict:
             "domain": "system"
         }
 
-    # -----------------------------
-    # Domain detection
-    # -----------------------------
     detected_domain = "general"
     for domain, keywords in REAL_TIME_DOMAINS.items():
         if any(k in msg for k in keywords):
             detected_domain = domain
             break
 
-    # -----------------------------
-    # Temporal reasoning
-    # -----------------------------
     has_state_change = any(k in msg for k in STATE_CHANGE_VERBS)
     has_time_reference = any(k in msg for k in TIME_REFERENCE_TERMS)
 
-    # -----------------------------
-    # Real-time decision rule
-    # -----------------------------
-    if (
-        detected_domain != "general"
-        and (has_state_change or has_time_reference)
-    ):
+    if detected_domain != "general" and (has_state_change or has_time_reference):
         return {
             "intent": "lookup",
             "knowledge_freshness": "real_time",
@@ -155,16 +186,12 @@ def analyze_request(message: str) -> dict:
         }
 
     if has_time_reference:
-        
         return {
             "intent": "lookup",
             "knowledge_freshness": "real_time",
             "domain": detected_domain
         }
-    
-    # -----------------------------
-    # Debugging / explanation
-    # -----------------------------
+
     if any(k in msg for k in [
         "error", "exception", "traceback",
         "bug", "not working", "fails"
@@ -175,10 +202,6 @@ def analyze_request(message: str) -> dict:
             "domain": "general"
         }
 
-    # -----------------------------
-    # Default: timeless knowledge
-    # -----------------------------
-    
     return {
         "intent": "general",
         "knowledge_freshness": "static",
@@ -191,12 +214,10 @@ def analyze_request(message: str) -> dict:
 
 def build_system_prompt(message: str | None = None) -> str:
     """
-    Build the system prompt.
+    Build and return the system prompt.
 
     NOTE:
-    - message is accepted for backward compatibility
-    - prompt does NOT depend on message content
-    - tool data is injected separately by the LLM layer
+    - Prompt does NOT depend on message content
+    - Tool data is injected separately
     """
-    
     return BASE_PROMPT

@@ -11,9 +11,10 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   const [messages, setMessages] = useState([])
   const [inputMessage, setInputMessage] = useState('')
   const [loading, setLoading] = useState(false)
-
-  // Controls welcome hero fade-out
   const [hideWelcome, setHideWelcome] = useState(false)
+
+  // 🔍 Lightbox state
+  const [lightboxImage, setLightboxImage] = useState(null)
 
   const conversationIdRef = useRef(activeConversationId)
   const streamingIdRef = useRef(null)
@@ -32,18 +33,34 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   /* ================= SCROLL ================= */
 
   useEffect(() => {
-    const prev = prevMessageCountRef.current
-    const curr = messages.length
-
-    if (curr > prev) {
+    if (messages.length > prevMessageCountRef.current) {
       messagesEndRef.current?.scrollIntoView({
         block: 'end',
         behavior: 'auto'
       })
     }
-
-    prevMessageCountRef.current = curr
+    prevMessageCountRef.current = messages.length
   }, [messages])
+
+  /* ================= LIGHTBOX ESC HANDLER ================= */
+
+  useEffect(() => {
+    if (!lightboxImage) return
+
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setLightboxImage(null)
+      }
+    }
+
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', onKeyDown)
+
+    return () => {
+      document.body.style.overflow = ''
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [lightboxImage])
 
   /* ================= CONVERSATION ================= */
 
@@ -96,9 +113,9 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
+          img: () => null, // 🔒 HARD BLOCK MARKDOWN IMAGES
           code({ inline, className, children }) {
             const match = /language-(\w+)/.exec(className || '')
-
             if (!inline && match) {
               return (
                 <CodeBlock
@@ -107,12 +124,7 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
                 />
               )
             }
-
-            return (
-              <code className="inline-code">
-                {children}
-              </code>
-            )
+            return <code className="inline-code">{children}</code>
           }
         }}
       >
@@ -125,10 +137,8 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
 
   const copyAssistantText = (msgId, text) => {
     if (!text) return
-
     const cleaned = text.replace(/```[\s\S]*?```/g, '').trim()
     navigator.clipboard.writeText(cleaned)
-
     setCopiedMsgId(msgId)
     setTimeout(() => setCopiedMsgId(null), 1200)
   }
@@ -143,22 +153,26 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
     const streamingId = crypto.randomUUID()
     streamingIdRef.current = streamingId
 
-    // Trigger welcome fade-out ON FIRST USER ACTION
     setHideWelcome(true)
-
     setInputMessage('')
     setLoading(true)
 
     setMessages(prev => [
       ...prev,
       { id: crypto.randomUUID(), role: 'user', message: userText },
-      { id: streamingId, role: 'assistant', message: '' }
+      {
+        id: streamingId,
+        role: 'assistant',
+        message: '',
+        images: []
+      }
     ])
 
     try {
       await chatStream(
         userText,
         conversationIdRef.current,
+
         (chunk) => {
           setMessages(prev =>
             prev.map(msg =>
@@ -168,10 +182,21 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
             )
           )
         },
+
         (meta) => {
           if (!conversationIdRef.current && meta?.conversation_id) {
             conversationIdRef.current = meta.conversation_id
             onConversationCreated?.(meta.conversation_id)
+          }
+
+          if (meta?.images?.length) {
+            setMessages(prev =>
+              prev.map(msg =>
+                msg.id === streamingId
+                  ? { ...msg, images: meta.images }
+                  : msg
+              )
+            )
           }
         }
       )
@@ -182,27 +207,23 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
     }
   }
 
-  /* ================= WELCOME VISIBILITY ================= */
+  /* ================= UI ================= */
 
   const showWelcome =
     activeConversationId === null && !hideWelcome
-
-  /* ================= UI ================= */
 
   return (
     <div className="chatbot-container">
       <div className={`messages-container ${showWelcome ? 'centered' : ''}`}>
 
-        {/* ===== WELCOME HERO ===== */}
         {showWelcome && (
-          <div className={`message assistant welcome ${hideWelcome ? 'fade-out' : ''}`}>
+          <div className="message assistant welcome">
             <div className="message-content">
               Nice to meet you. What’s on your mind today?
             </div>
           </div>
         )}
 
-        {/* ===== CHAT MESSAGES ===== */}
         {messages.map(msg => {
           const isStreaming = msg.id === streamingIdRef.current
 
@@ -213,7 +234,6 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
             >
               <div className="message-content">
 
-                {/* THINKING INDICATOR — ABOVE TEXT */}
                 {msg.role === 'assistant' && isStreaming && (
                   <div className="thinking">
                     <span className="thinking-dot" />
@@ -223,24 +243,33 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
                   </div>
                 )}
 
-                {/* COPY BUTTON */}
+                {msg.role === 'assistant' && msg.images?.length > 0 && (
+                  <div className="assistant-image-grid">
+                    {msg.images.map((img, i) => (
+                      <img
+                        key={i}
+                        src={img.url}
+                        alt={img.alt}
+                        loading="lazy"
+                        onClick={() => setLightboxImage(img)}
+                      />
+                    ))}
+                  </div>
+                )}
+
                 {msg.role === 'assistant' && msg.message && (
                   <button
                     className={`assistant-copy-btn ${
                       copiedMsgId === msg.id ? 'copied' : ''
                     }`}
                     onClick={() => copyAssistantText(msg.id, msg.message)}
-                    aria-label="Copy response"
                   >
                     {copiedMsgId === msg.id ? 'Copied ✓' : 'Copy'}
                   </button>
                 )}
 
                 {renderMessage(msg.message)}
-
-                {isStreaming && (
-                  <span className="cursor">▍</span>
-                )}
+                {isStreaming && <span className="cursor">▍</span>}
               </div>
             </div>
           )
@@ -249,7 +278,6 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* ===== INPUT ===== */}
       <div className="input-container">
         <textarea
           ref={inputRef}
@@ -257,12 +285,6 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
           value={inputMessage}
           placeholder="Ask StackMind…"
           disabled={loading}
-          inputMode="text"
-          enterKeyHint="send"
-          autoCorrect="off"
-          autoCapitalize="off"
-          autoComplete="off"
-          spellCheck={false}
           onChange={(e) => setInputMessage(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -280,6 +302,20 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
           Send
         </button>
       </div>
+
+      {/* ================= IMAGE LIGHTBOX ================= */}
+      {lightboxImage && (
+        <div
+          className="image-lightbox"
+          onClick={() => setLightboxImage(null)}
+        >
+          <img
+            src={lightboxImage.url}
+            alt={lightboxImage.alt}
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   )
 }

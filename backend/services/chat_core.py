@@ -1,6 +1,6 @@
 import json
 import re
-from typing import Generator, Optional
+from typing import Generator, Optional, Tuple
 from sqlalchemy.orm import Session
 
 from core.logger import get_logger
@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 # ----------------------------------------------------
 
 FOLLOWUP_PRONOUNS = {
-    "it", "this", "that", "they", "them", "those", "he", "she"
+    "it", "this", "that", "they", "them", "those", "he", "she", "above", "below"
 }
 
 FOLLOWUP_PHRASES = {
@@ -29,9 +29,8 @@ FOLLOWUP_PHRASES = {
     "next",
 }
 
-# Requests that must NEVER be treated as follow-ups
 HARD_NEW_QUERY_PATTERNS = [
-    r"https?://",          # URLs
+    r"https?://",
     r"\bcode\b",
     r"\bpython\b",
     r"\bjava\b",
@@ -41,7 +40,6 @@ HARD_NEW_QUERY_PATTERNS = [
     r"\bexcel\b",
     r"\bfile\b",
 ]
-
 
 # ----------------------------------------------------
 # HELPERS
@@ -60,21 +58,14 @@ def _contains_hard_new_query_signal(message: str) -> bool:
 
 
 def _is_potential_followup(message: str) -> bool:
-    """
-    Returns True ONLY if the message clearly depends on previous context.
-    """
-
     msg = message.lower().strip()
 
-    # Hard stop: new task signals
     if _contains_hard_new_query_signal(msg):
         return False
 
-    # Explicit continuation phrases
     if any(p in msg for p in FOLLOWUP_PHRASES):
         return True
 
-    # Pronoun-based reference (must be short + referential)
     if any(re.search(rf"\b{p}\b", msg) for p in FOLLOWUP_PRONOUNS):
         return True
 
@@ -82,10 +73,6 @@ def _is_potential_followup(message: str) -> bool:
 
 
 def _are_domains_compatible(prev: str, curr: str) -> bool:
-    """
-    Blocks obvious task switches (politics → coding, etc.)
-    """
-
     prev_l = prev.lower()
     curr_l = curr.lower()
 
@@ -117,14 +104,12 @@ def _are_domains_compatible(prev: str, curr: str) -> bool:
 
 def _extract_subject(question: str) -> str:
     q = question.strip().rstrip("?")
-
     q = re.sub(
         r"^(who|what|when|where|why|how|tell me|explain)\s+",
         "",
         q,
         flags=re.IGNORECASE
     )
-
     return q.strip()
 
 
@@ -154,7 +139,7 @@ def _normalize_followup(prev: str, curr: str) -> str:
 def _resolve_followup(
     message: str,
     last_user_message: Optional[str]
-) -> tuple[str, bool]:
+) -> Tuple[str, bool]:
 
     if not last_user_message:
         return message, False
@@ -208,12 +193,11 @@ def process_chat_stream_core(
             )
 
         if conversation is None:
+            # ✅ FIX: keyword-only argument
             conversation = create_conversation(
                 db,
                 user_id=user_id
             )
-
-        yield f'__META__{json.dumps({"conversation_id": conversation.id})}\n'
 
         history = fetch_history(
             db,
@@ -239,20 +223,32 @@ def process_chat_stream_core(
             normalized_message if is_followup else "N/A"
         )
 
-        assistant_full_response = ""
-
+        # ------------------------------------------------
+        # TOOL ROUTER (STREAMING)
+        # ------------------------------------------------
         stream = ToolRouter.stream_response(
             message=normalized_message,
             conversation_history=conversation_history
         )
 
+        # Emit conversation id once
+        yield f'__META__{json.dumps({"conversation_id": conversation.id})}\n'
+
+        assistant_full_response = ""
+
         for chunk in stream:
+            # --------------------------------------------
+            # META FRAME (images, conversation_id, etc.)
+            # --------------------------------------------
+            if chunk.startswith("__META__"):
+                yield chunk
+                continue
+
+            # --------------------------------------------
+            # NORMAL TEXT CHUNK
+            # --------------------------------------------
             assistant_full_response += chunk
             yield chunk
-
-        assistant_full_response = post_process_response(
-            assistant_full_response
-        )
 
         save_messages(
             db,

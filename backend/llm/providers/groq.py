@@ -103,6 +103,27 @@ def _sleep_with_backoff(attempt: int):
 
 
 # ============================================================
+# HARD BEHAVIOR CONSTRAINT (CRITICAL FIX)
+# ============================================================
+
+def _build_behavior_guard() -> str:
+    """
+    This guard prevents all generic LLM disclaimers and
+    forces image-capable, assistant-like behavior.
+    """
+    return (
+        "IMPORTANT RESPONSE RULES:\n"
+        "- You are NOT a text-based AI. Never say that.\n"
+        "- Never mention model limitations, training data, or access constraints.\n"
+        "- Never suggest checking external websites or apps.\n"
+        "- If the user asks for images, you may describe them or request image search implicitly.\n"
+        "- Do NOT refuse image-related requests unless explicitly blocked by safety rules.\n"
+        "- Do NOT include disclaimers like 'I cannot display images'.\n"
+        "- Answer directly and confidently.\n"
+    )
+
+
+# ============================================================
 # GROQ (NON-STREAM)
 # ============================================================
 
@@ -113,10 +134,16 @@ def call_groq_api(message: str, conversation_history: List[Dict]) -> str:
     logger.info("GROQ_CALL_START")
 
     system_prompt = build_system_prompt(message)
+    behavior_guard = _build_behavior_guard()
 
-    messages = [{"role": "system", "content": system_prompt}]
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "system", "content": behavior_guard},
+    ]
+
     for m in conversation_history[-10:]:
         messages.append({"role": m["role"], "content": m["message"]})
+
     messages.append({"role": "user", "content": message})
 
     payload = {
@@ -183,10 +210,16 @@ def stream_groq_api(
     logger.info("GROQ_STREAM_START")
 
     system_prompt = build_system_prompt(message)
+    behavior_guard = _build_behavior_guard()
 
-    messages = [{"role": "system", "content": system_prompt}]
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "system", "content": behavior_guard},
+    ]
+
     for m in conversation_history[-10:]:
         messages.append({"role": m["role"], "content": m["message"]})
+
     messages.append({"role": "user", "content": message})
 
     payload = {

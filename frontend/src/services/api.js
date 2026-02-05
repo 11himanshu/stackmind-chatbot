@@ -12,11 +12,6 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 
 /* =========================================================
    Helper: Auth headers
-   ---------------------------------------------------------
-   IMPORTANT:
-   - Reads JWT from localStorage
-   - Attaches Authorization header ONLY if token exists
-   - Used by BOTH normal and streaming requests
    ========================================================= */
 const authHeaders = () => {
   const token = localStorage.getItem('token')
@@ -29,15 +24,6 @@ const authHeaders = () => {
 
 /* =========================================================
    Helper: JSON fetch wrapper
-   ---------------------------------------------------------
-   Used for:
-   - login
-   - register
-   - conversations
-   Automatically:
-   - sends JWT
-   - parses JSON
-   - throws meaningful errors
    ========================================================= */
 const fetchJSON = async (url, options = {}) => {
   const response = await fetch(url, {
@@ -71,31 +57,15 @@ export const login = async (username, password) => {
 
 /* ===================== CHAT (STREAM + SAVE) ===================== */
 
-/*
-  chatStream
-  ----------
-  SINGLE SOURCE OF TRUTH for chatting.
-
-  Backend:
-  - Streams assistant response
-  - Emits ONE metadata frame:
-      __META__{"conversation_id": X}
-  - Persists messages after stream completes
-
-  Frontend:
-  - Strips metadata from UI
-  - Captures conversation_id ONCE
-  - Streams ONLY assistant text to renderer
-*/
 export const chatStream = async (
   message,
   conversationId = null,
   onChunk,
-  onMeta // 👈 NEW (OPTIONAL) METADATA CALLBACK
+  onMeta
 ) => {
   const response = await fetch(`${API_BASE_URL}/chat`, {
     method: 'POST',
-    headers: authHeaders(), // ✅ JWT INCLUDED
+    headers: authHeaders(),
     body: JSON.stringify({
       message,
       conversation_id: conversationId
@@ -109,31 +79,55 @@ export const chatStream = async (
   const reader = response.body.getReader()
   const decoder = new TextDecoder('utf-8')
 
+  let buffer = ''
+
   while (true) {
     const { value, done } = await reader.read()
     if (done) break
 
-    const chunk = decoder.decode(value, { stream: true })
-    if (!chunk) continue
+    buffer += decoder.decode(value, { stream: true })
 
     // =====================================================
-    // 🔥 METADATA FRAME (STRIP FROM UI)
-    // Format: __META__{"conversation_id": 42}
+    // PROCESS BUFFER
     // =====================================================
-    if (chunk.startsWith('__META__')) {
-      try {
-        const meta = JSON.parse(chunk.replace('__META__', ''))
-        onMeta?.(meta)
-      } catch (e) {
-        console.error('Invalid META chunk', e)
+    while (buffer.length) {
+      // ---- META FRAME ----
+      if (buffer.startsWith('__META__')) {
+        const metaEnd = buffer.indexOf('\n')
+        if (metaEnd === -1) break // wait for full frame
+
+        const metaRaw = buffer.slice(8, metaEnd)
+        buffer = buffer.slice(metaEnd + 1)
+
+        try {
+          const meta = JSON.parse(metaRaw)
+          onMeta?.(meta)
+        } catch (e) {
+          console.error('Invalid META chunk', e, metaRaw)
+        }
+
+        continue
       }
-      continue
-    }
 
-    // =====================================================
-    // 🔥 PURE ASSISTANT TEXT (SAFE FOR MARKDOWN)
-    // =====================================================
-    onChunk(chunk)
+      // ---- TEXT FRAME ----
+      const nextMeta = buffer.indexOf('__META__')
+
+      if (nextMeta === -1) {
+        const text = buffer
+        buffer = ''
+
+        if (text.trim()) {
+          onChunk?.(text)
+        }
+      } else {
+        const text = buffer.slice(0, nextMeta)
+        buffer = buffer.slice(nextMeta)
+
+        if (text.trim()) {
+          onChunk?.(text)
+        }
+      }
+    }
   }
 }
 
