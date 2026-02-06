@@ -3,12 +3,15 @@ from sqlalchemy.orm import Session
 # IMPORTANT:
 # functions.py is a backward-compatibility layer only.
 # It must NOT import ChatService.
-# It must NOT import services.
+# It must NOT import services beyond chat_core.
 # It only exposes functions used by routers.
 
 from services.chat_core import process_chat_stream_core
-from repositories.conversation_repo import list_conversations, delete_conversation
-from repositories.message_repo import fetch_history
+from repositories.conversation_repo import (
+    list_conversations,
+    delete_conversation as delete_conversation_repo,
+)
+from repositories.message_repo import fetch_history, delete_messages
 
 
 # ============================================================
@@ -30,7 +33,7 @@ def process_chat_stream(
 
 
 # ============================================================
-# CONVERSATION HISTORY
+# CONVERSATION HISTORY (FIXED: IMAGES + IDS)
 # ============================================================
 
 def get_conversation_history(
@@ -46,9 +49,11 @@ def get_conversation_history(
 
     return [
         {
+            "id": m.id,
             "role": m.role,
             "message": m.message,
-            "timestamp": m.created_at
+            "images": (m.message_meta or {}).get("images", []),
+            "timestamp": m.created_at,
         }
         for m in messages
     ]
@@ -97,7 +102,7 @@ def list_user_conversations(
 
 
 # ============================================================
-# DELETE CONVERSATION
+# DELETE CONVERSATION (FIXED: NO RECURSION)
 # ============================================================
 
 def delete_conversation(
@@ -105,14 +110,13 @@ def delete_conversation(
     user_id: int,
     conversation_id: int
 ) -> bool:
-    from repositories.message_repo import delete_messages
-
+    # delete messages first (FK safety)
     delete_messages(
         db,
         conversation_id=conversation_id
     )
 
-    deleted = delete_conversation(
+    deleted = delete_conversation_repo(
         db,
         conversation_id=conversation_id,
         user_id=user_id

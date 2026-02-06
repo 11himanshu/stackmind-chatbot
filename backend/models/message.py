@@ -12,36 +12,41 @@ class Message(Base):
         Integer,
         ForeignKey("conversations.id", ondelete="CASCADE"),
         nullable=False,
-        index=True
+        index=True,
     )
 
     role = Column(
         String,
-        nullable=False
+        nullable=False,  # "user" | "assistant"
     )
 
     message = Column(
         String,
-        nullable=False
+        nullable=False,
     )
 
     # ----------------------------------------------------
-    # OPTIONAL METADATA (forward-compatible)
+    # OPTIONAL ASSISTANT METADATA
+    #
+    # Stored ONLY for assistant messages.
     #
     # Examples:
-    # - is_followup: bool
-    # - normalized_query: str
-    # - domain: str
-    # - freshness: str (static | real_time)
-    # - tool_used: str
+    # {
+    #   "images": [{ url, alt, credit }]
+    #   "tool": "image"
+    # }
     #
-    # NOTE:
-    # - Nullable → old rows remain valid
-    # - JSON → no schema changes for future features
+    # Rules:
+    # - NULL for user messages
+    # - JSON for forward compatibility
     # ----------------------------------------------------
-    message_meta = Column(JSON,nullable=True)
+    message_meta = Column(
+        JSON,
+        nullable=True,
+    )
 
     created_at = Column(
         DateTime(timezone=True),
-        server_default=func.now()
+        server_default=func.now(),
+        nullable=False,
     )

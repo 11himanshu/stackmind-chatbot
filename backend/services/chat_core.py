@@ -235,18 +235,31 @@ def process_chat_stream_core(
         yield f'__META__{json.dumps({"conversation_id": conversation.id})}\n'
 
         assistant_full_response = ""
+        assistant_images: list[dict] = []
 
         for chunk in stream:
-            # --------------------------------------------
-            # META FRAME (images, conversation_id, etc.)
-            # --------------------------------------------
-            if chunk.startswith("__META__"):
-                yield chunk
+            if not chunk:
                 continue
 
-            # --------------------------------------------
-            # NORMAL TEXT CHUNK
-            # --------------------------------------------
+            stripped = chunk.lstrip()
+
+            # ---------------- META FRAME ----------------
+            if stripped.startswith("__META__"):
+                yield chunk
+
+                try:
+                    meta = json.loads(stripped[len("__META__"):])
+
+                    # Only collect assistant images
+                    if isinstance(meta, dict) and "images" in meta:
+                        assistant_images = meta["images"]
+
+                except Exception:
+                    logger.warning("META_PARSE_FAILED | chunk=%s", stripped)
+
+                continue
+
+            # ---------------- TEXT CHUNK ----------------
             assistant_full_response += chunk
             yield chunk
 
@@ -254,7 +267,10 @@ def process_chat_stream_core(
             db,
             conversation_id=conversation.id,
             user_message=message,
-            assistant_message=assistant_full_response
+            assistant_message=assistant_full_response,
+            assistant_meta={
+                "images": assistant_images
+            } if assistant_images else None
         )
 
         db.commit()

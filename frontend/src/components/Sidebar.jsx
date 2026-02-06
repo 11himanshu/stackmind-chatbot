@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { fetchConversations, deleteConversation } from '../services/api'
 
 const HEADER_HEIGHT = 64
@@ -19,21 +19,17 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
   }, [])
 
   // =========================================================
-  // Load conversations
+  // Load conversations (ONLY ON MOUNT)
   // =========================================================
-  const loadConversations = () => {
+  const loadConversations = useCallback(() => {
     fetchConversations()
       .then(setConversations)
       .catch(console.error)
-  }
-
-  useEffect(() => {
-    loadConversations()
   }, [])
 
   useEffect(() => {
     loadConversations()
-  }, [activeConversationId])
+  }, [loadConversations])
 
   // =========================================================
   // Actions
@@ -49,11 +45,12 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
   }
 
   const handleSelect = (id) => {
+    if (id === activeConversationId) return
     onSelectConversation(id)
   }
 
   const handleClose = () => {
-    onSelectConversation(activeConversationId)
+    // close sidebar only — do NOT touch conversation state
   }
 
   return (
@@ -101,7 +98,7 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
           zIndex: 50
         }}
       >
-        {/* ================= Sidebar Header (STICKY INSIDE SIDEBAR) ================= */}
+        {/* ================= Sidebar Header ================= */}
         <div
           style={{
             position: 'sticky',
@@ -161,7 +158,7 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
           </button>
         </div>
 
-        {/* ================= List ================= */}
+        {/* ================= Conversation List ================= */}
         <div
           style={{
             flex: 1,

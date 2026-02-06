@@ -13,44 +13,31 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   const [loading, setLoading] = useState(false)
   const [hideWelcome, setHideWelcome] = useState(false)
 
-  // 🔍 Lightbox state
   const [lightboxImage, setLightboxImage] = useState(null)
+  const [copiedMsgId, setCopiedMsgId] = useState(null)
 
-  const conversationIdRef = useRef(activeConversationId)
+  const conversationIdRef = useRef(null)
   const streamingIdRef = useRef(null)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
   const prevMessageCountRef = useRef(0)
 
-  const [copiedMsgId, setCopiedMsgId] = useState(null)
-
-  const focusInput = () => {
-    requestAnimationFrame(() => {
-      inputRef.current?.focus({ preventScroll: true })
-    })
-  }
-
   /* ================= SCROLL ================= */
 
   useEffect(() => {
     if (messages.length > prevMessageCountRef.current) {
-      messagesEndRef.current?.scrollIntoView({
-        block: 'end',
-        behavior: 'auto'
-      })
+      messagesEndRef.current?.scrollIntoView({ block: 'end' })
     }
     prevMessageCountRef.current = messages.length
   }, [messages])
 
-  /* ================= LIGHTBOX ESC HANDLER ================= */
+  /* ================= LIGHTBOX ESC ================= */
 
   useEffect(() => {
     if (!lightboxImage) return
 
     const onKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        setLightboxImage(null)
-      }
+      if (e.key === 'Escape') setLightboxImage(null)
     }
 
     document.body.style.overflow = 'hidden'
@@ -62,46 +49,41 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
     }
   }, [lightboxImage])
 
-  /* ================= CONVERSATION ================= */
+  /* ================= CONVERSATION SWITCH ================= */
 
   useEffect(() => {
-    const previousId = conversationIdRef.current
-
-    if (previousId && activeConversationId === null) {
+    if (activeConversationId === null) {
       conversationIdRef.current = null
       setMessages([])
       setHideWelcome(false)
       prevMessageCountRef.current = 0
-      focusInput()
       return
     }
 
-    if (!previousId && activeConversationId) {
-      conversationIdRef.current = activeConversationId
-      return
-    }
+    if (conversationIdRef.current === activeConversationId) return
 
-    if (previousId === activeConversationId) return
+    const requestedId = activeConversationId
+    conversationIdRef.current = requestedId
 
-    if (previousId && activeConversationId) {
-      conversationIdRef.current = activeConversationId
-      setMessages([])
-      setHideWelcome(true)
-      prevMessageCountRef.current = 0
-      focusInput()
+    setHideWelcome(true)
+    setMessages([])
+    prevMessageCountRef.current = 0
 
-      fetchConversationHistory(activeConversationId)
-        .then(res => setMessages(res.messages || []))
-        .catch(() => {
-          setMessages([
-            {
-              id: 'error',
-              role: 'assistant',
-              message: 'Failed to load conversation.'
-            }
-          ])
-        })
-    }
+    fetchConversationHistory(requestedId)
+      .then(res => {
+        if (conversationIdRef.current !== requestedId) return
+        setMessages(res.messages || [])
+      })
+      .catch(() => {
+        if (conversationIdRef.current !== requestedId) return
+        setMessages([
+          {
+            id: 'error',
+            role: 'assistant',
+            message: 'Failed to load conversation.'
+          }
+        ])
+      })
   }, [activeConversationId])
 
   /* ================= MARKDOWN ================= */
@@ -113,7 +95,14 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          img: () => null, // 🔒 HARD BLOCK MARKDOWN IMAGES
+          img: () => null,
+          a({ href, children }) {
+            return (
+              <a href={href} target="_blank" rel="noopener noreferrer">
+                {children}
+              </a>
+            )
+          },
           code({ inline, className, children }) {
             const match = /language-(\w+)/.exec(className || '')
             if (!inline && match) {
@@ -143,6 +132,9 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
     setTimeout(() => setCopiedMsgId(null), 1200)
   }
 
+  /* ================= IMAGE PAGE FETCH ================= */
+  const fetchImagePage = () => {}
+
   /* ================= SEND ================= */
 
   const handleSend = async (e) => {
@@ -164,16 +156,21 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
         id: streamingId,
         role: 'assistant',
         message: '',
-        images: []
+        images: [],
+        imagePage: 1,
+        imageRequested: 0
       }
     ])
+
+    let finalText = ''
+    let finalImages = []
 
     try {
       await chatStream(
         userText,
         conversationIdRef.current,
-
         (chunk) => {
+          finalText += chunk
           setMessages(prev =>
             prev.map(msg =>
               msg.id === streamingId
@@ -182,18 +179,24 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
             )
           )
         },
-
         (meta) => {
           if (!conversationIdRef.current && meta?.conversation_id) {
             conversationIdRef.current = meta.conversation_id
             onConversationCreated?.(meta.conversation_id)
           }
 
-          if (meta?.images?.length) {
+          if (meta?.images) {
+            finalImages = meta.images
+
             setMessages(prev =>
               prev.map(msg =>
                 msg.id === streamingId
-                  ? { ...msg, images: meta.images }
+                  ? {
+                      ...msg,
+                      images: meta.images,
+                      imageRequested: meta.requested || meta.images.length,
+                      imagePage: 1
+                    }
                   : msg
               )
             )
@@ -203,14 +206,33 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
     } finally {
       streamingIdRef.current = null
       setLoading(false)
-      focusInput()
+
+      setMessages(prev =>
+        prev.map(msg => {
+          if (msg.id !== streamingId) return msg
+
+          if (!finalText && finalImages.length === 0) {
+            return {
+              ...msg,
+              message:
+                'I want to get this right for you. StackMind could not fully understand the request. Please add a bit more detail and I will continue from there.',
+              images: []
+            }
+          }
+
+          return {
+            ...msg,
+            message: finalText,
+            images: finalImages
+          }
+        })
+      )
     }
   }
 
   /* ================= UI ================= */
 
-  const showWelcome =
-    activeConversationId === null && !hideWelcome
+  const showWelcome = activeConversationId === null && !hideWelcome
 
   return (
     <div className="chatbot-container">
@@ -226,6 +248,18 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
 
         {messages.map(msg => {
           const isStreaming = msg.id === streamingIdRef.current
+          const page = msg.imagePage || 1
+          const perPage = 3
+
+          /* ✅ FIX: normalize images safely */
+          const images = Array.isArray(msg.images) ? msg.images : []
+          const totalImages = msg.imageRequested || images.length
+
+          const start = (page - 1) * perPage
+          const end = start + perPage
+          const visibleImages = images.slice(start, end)
+
+          const totalPages = Math.ceil(totalImages / perPage)
 
           return (
             <div
@@ -243,18 +277,56 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
                   </div>
                 )}
 
-                {msg.role === 'assistant' && msg.images?.length > 0 && (
-                  <div className="assistant-image-grid">
-                    {msg.images.map((img, i) => (
-                      <img
-                        key={i}
-                        src={img.url}
-                        alt={img.alt}
-                        loading="lazy"
-                        onClick={() => setLightboxImage(img)}
-                      />
-                    ))}
-                  </div>
+                {msg.role === 'assistant' && visibleImages.length > 0 && (
+                  <>
+                    <div className="assistant-image-grid">
+                      {visibleImages.map((img, i) => (
+                        <img
+                          key={i}
+                          src={img.url}
+                          alt={img.alt}
+                          loading="lazy"
+                          onClick={() => setLightboxImage(img)}
+                        />
+                      ))}
+                    </div>
+
+                    {totalPages > 1 && (
+                      <div className="image-pagination">
+                        <button
+                          disabled={page === 1}
+                          onClick={() =>
+                            setMessages(prev =>
+                              prev.map(m =>
+                                m.id === msg.id
+                                  ? { ...m, imagePage: page - 1 }
+                                  : m
+                              )
+                            )
+                          }
+                        >
+                          ‹
+                        </button>
+                        <span>
+                          {page} / {totalPages}
+                        </span>
+                        <button
+                          disabled={page === totalPages}
+                          onClick={() =>
+                            setMessages(prev =>
+                              prev.map(m =>
+                                m.id === msg.id
+                                  ? { ...m, imagePage: page + 1 }
+                                  : m
+                              )
+                            )
+                          }
+                        >
+                          ›
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
 
                 {msg.role === 'assistant' && msg.message && (
@@ -269,7 +341,6 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
                 )}
 
                 {renderMessage(msg.message)}
-                {isStreaming && <span className="cursor">▍</span>}
               </div>
             </div>
           )
@@ -283,7 +354,7 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
           ref={inputRef}
           className="message-input"
           value={inputMessage}
-          placeholder="Ask StackMind…"
+          placeholder="StackMind will solve that for you Ask Stackmind…"
           disabled={loading}
           onChange={(e) => setInputMessage(e.target.value)}
           onKeyDown={(e) => {
@@ -303,7 +374,6 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
         </button>
       </div>
 
-      {/* ================= IMAGE LIGHTBOX ================= */}
       {lightboxImage && (
         <div
           className="image-lightbox"

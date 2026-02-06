@@ -194,7 +194,7 @@
   background: var(--bg-assistant);
   word-wrap: break-word;
   line-height: 1.65;
-  color: rgba(0, 0, 0, 0.82);
+  color: var(--text-primary, #e5e7eb);
 
   /* Gentle entrance so text feels alive */
   animation: messageFadeIn 0.18s ease-out both;
@@ -330,13 +330,35 @@
   margin: 12px 0 8px;
   font-weight: 600;
 }
+/* --- FIX: Proper spacing for markdown lists --- */
 
+.message-content li {
+  list-style-position: outside;
+}
+
+.message-content li p {
+  margin: 0 0 8px;
+}
+
+.message-content li:last-child p {
+  margin-bottom: 0;
+}
 .inline-code {
   background: rgba(0, 0, 0, 0.08);
   padding: 2px 6px;
   border-radius: 6px;
   font-size: 0.95em;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* --- FIX: Improve spacing after ordered list numbers --- */
+
+.message-content ol {
+  padding-left: 26px; /* more breathing room for numbers */
+}
+
+.message-content ol li {
+  padding-left: 4px;  /* space between "1." and text */
 }
 
 /* ================= THINKING / GENERATING ================= */
@@ -349,9 +371,10 @@
   margin-top: 8px;
   padding: 6px 12px;
   border-radius: 999px;
-  background: rgba(0, 0, 0, 0.04);
+
+  background: rgba(255, 255, 255, 0.08);
   font-size: 13.5px;
-  color: rgba(0, 0, 0, 0.6);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.75));
 }
 
 .thinking-dot {
@@ -418,18 +441,6 @@
 .send-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-}
-
-/* ================= CURSOR ================= */
-
-.cursor {
-  display: inline-block;
-  margin-left: 2px;
-  animation: blink 1s steps(1) infinite;
-}
-
-@keyframes blink {
-  50% { opacity: 0; }
 }
 
 /* ================= MESSAGE FADE ================= */
@@ -646,4 +657,43 @@
     max-height: 82vh;
     border-radius: 14px;
   }
+}
+
+
+/* ================= IMAGE PAGINATION (INLINE, CLEAN) ================= */
+
+.image-pagination {
+  position: absolute;
+  bottom: 10px;
+  right: 14px;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+
+  padding: 4px 8px;
+  border-radius: 999px;
+
+  font-size: 12.5px;
+  color: #ffffff;
+
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.image-pagination button {
+  background: transparent;
+  border: none;
+  color: #ffffff;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.image-pagination button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }

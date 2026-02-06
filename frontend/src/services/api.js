@@ -5,7 +5,7 @@
   - Centralize all HTTP calls
   - Automatically attach JWT auth headers
   - Support JSON + streaming endpoints
-  - NEVER pass user_id from frontend (security)
+  - Prevent duplicate / hanging requests
 */
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
@@ -23,20 +23,41 @@ const authHeaders = () => {
 }
 
 /* =========================================================
-   Helper: JSON fetch wrapper
+   In-flight request control (STRICT)
    ========================================================= */
-const fetchJSON = async (url, options = {}) => {
-  const response = await fetch(url, {
-    headers: authHeaders(),
-    ...options
-  })
+const inflight = new Map()
 
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}))
-    throw new Error(err.detail || `HTTP error ${response.status}`)
+const inflightKey = (url, method = 'GET') =>
+  `${method.toUpperCase()}::${url}`
+
+const fetchJSON = async (url, options = {}) => {
+  const method = options.method || 'GET'
+  const key = inflightKey(url, method)
+
+  // Abort previous identical request
+  if (inflight.has(key)) {
+    inflight.get(key).abort()
   }
 
-  return response.json()
+  const controller = new AbortController()
+  inflight.set(key, controller)
+
+  try {
+    const response = await fetch(url, {
+      headers: authHeaders(),
+      signal: controller.signal,
+      ...options
+    })
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      throw new Error(err.detail || `HTTP error ${response.status}`)
+    }
+
+    return await response.json()
+  } finally {
+    inflight.delete(key)
+  }
 }
 
 /* ========================= AUTH ========================= */
@@ -55,7 +76,9 @@ export const login = async (username, password) => {
   })
 }
 
-/* ===================== CHAT (STREAM + SAVE) ===================== */
+/* ===================== CHAT (STREAM) ===================== */
+
+let activeChatController = null
 
 export const chatStream = async (
   message,
@@ -63,9 +86,18 @@ export const chatStream = async (
   onChunk,
   onMeta
 ) => {
+  // Abort any existing stream
+  if (activeChatController) {
+    activeChatController.abort()
+  }
+
+  const controller = new AbortController()
+  activeChatController = controller
+
   const response = await fetch(`${API_BASE_URL}/chat`, {
     method: 'POST',
     headers: authHeaders(),
+    signal: controller.signal,
     body: JSON.stringify({
       message,
       conversation_id: conversationId
@@ -73,6 +105,7 @@ export const chatStream = async (
   })
 
   if (!response.ok || !response.body) {
+    activeChatController = null
     throw new Error('Chat stream failed')
   }
 
@@ -81,53 +114,51 @@ export const chatStream = async (
 
   let buffer = ''
 
-  while (true) {
-    const { value, done } = await reader.read()
-    if (done) break
+  try {
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
 
-    buffer += decoder.decode(value, { stream: true })
+      buffer += decoder.decode(value, { stream: true })
 
-    // =====================================================
-    // PROCESS BUFFER
-    // =====================================================
-    while (buffer.length) {
-      // ---- META FRAME ----
-      if (buffer.startsWith('__META__')) {
-        const metaEnd = buffer.indexOf('\n')
-        if (metaEnd === -1) break // wait for full frame
+      while (buffer.length) {
+        // META frame
+        if (buffer.startsWith('__META__')) {
+          const metaEnd = buffer.indexOf('\n')
+          if (metaEnd === -1) break
 
-        const metaRaw = buffer.slice(8, metaEnd)
-        buffer = buffer.slice(metaEnd + 1)
+          const metaRaw = buffer.slice(8, metaEnd)
+          buffer = buffer.slice(metaEnd + 1)
 
-        try {
-          const meta = JSON.parse(metaRaw)
-          onMeta?.(meta)
-        } catch (e) {
-          console.error('Invalid META chunk', e, metaRaw)
+          try {
+            onMeta?.(JSON.parse(metaRaw))
+          } catch {
+            console.error('Invalid META chunk', metaRaw)
+          }
+          continue
         }
 
-        continue
-      }
+        // TEXT frame
+        const nextMeta = buffer.indexOf('__META__')
 
-      // ---- TEXT FRAME ----
-      const nextMeta = buffer.indexOf('__META__')
-
-      if (nextMeta === -1) {
-        const text = buffer
-        buffer = ''
-
-        if (text.trim()) {
-          onChunk?.(text)
-        }
-      } else {
-        const text = buffer.slice(0, nextMeta)
-        buffer = buffer.slice(nextMeta)
-
-        if (text.trim()) {
-          onChunk?.(text)
+        if (nextMeta === -1) {
+          const text = buffer
+          buffer = ''
+          if (text.trim()) onChunk?.(text)
+        } else {
+          const text = buffer.slice(0, nextMeta)
+          buffer = buffer.slice(nextMeta)
+          if (text.trim()) onChunk?.(text)
         }
       }
     }
+
+    // flush remaining buffer
+    if (buffer.trim()) {
+      onChunk?.(buffer)
+    }
+  } finally {
+    activeChatController = null
   }
 }
 
