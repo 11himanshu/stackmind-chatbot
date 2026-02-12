@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { chatStream, fetchConversationHistory } from '../services/api'
+import { chatStream, fetchConversationHistory, uploadFile } from '../services/api'
 import CodeBlock from './CodeBlock.jsx'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -13,13 +13,23 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
   const [loading, setLoading] = useState(false)
   const [hideWelcome, setHideWelcome] = useState(false)
 
+  const [attachedFiles, setAttachedFiles] = useState([])
+  const [showAttachMenu, setShowAttachMenu] = useState(false)
+
   const [lightboxImage, setLightboxImage] = useState(null)
   const [copiedMsgId, setCopiedMsgId] = useState(null)
+
+  /* ================= REFS ================= */
 
   const conversationIdRef = useRef(null)
   const streamingIdRef = useRef(null)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
+
+  const fileInputRef = useRef(null)
+  const imageInputRef = useRef(null)
+  const attachMenuRef = useRef(null)
+
   const prevMessageCountRef = useRef(0)
 
   /* ================= SCROLL ================= */
@@ -56,6 +66,7 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
       conversationIdRef.current = null
       setMessages([])
       setHideWelcome(false)
+      setAttachedFiles([])
       prevMessageCountRef.current = 0
       return
     }
@@ -67,6 +78,7 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
 
     setHideWelcome(true)
     setMessages([])
+    setAttachedFiles([])
     prevMessageCountRef.current = 0
 
     fetchConversationHistory(requestedId)
@@ -85,6 +97,24 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
         ])
       })
   }, [activeConversationId])
+
+  /* ================= ATTACH MENU OUTSIDE CLICK ================= */
+
+  useEffect(() => {
+    if (!showAttachMenu) return
+
+    const handleClickOutside = (e) => {
+      if (
+        attachMenuRef.current &&
+        !attachMenuRef.current.contains(e.target)
+      ) {
+        setShowAttachMenu(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showAttachMenu])
 
   /* ================= MARKDOWN ================= */
 
@@ -122,18 +152,30 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
     )
   }
 
-  /* ================= COPY ================= */
+  /* ================= FILE UPLOAD ================= */
 
-  const copyAssistantText = (msgId, text) => {
-    if (!text) return
-    const cleaned = text.replace(/```[\s\S]*?```/g, '').trim()
-    navigator.clipboard.writeText(cleaned)
-    setCopiedMsgId(msgId)
-    setTimeout(() => setCopiedMsgId(null), 1200)
+  const handleFileSelect = async (e) => {
+    const files = Array.from(e.target.files || [])
+    if (!files.length) return
+
+    try {
+      setLoading(true)
+      for (const file of files) {
+        const uploaded = await uploadFile(file)
+        setAttachedFiles(prev => [...prev, uploaded])
+      }
+    } catch (err) {
+      console.error('FILE_UPLOAD_FAILED', err)
+      alert('Failed to upload file')
+    } finally {
+      setLoading(false)
+      e.target.value = ''
+    }
   }
 
-  /* ================= IMAGE PAGE FETCH ================= */
-  const fetchImagePage = () => {}
+  const removeFile = (fileId) => {
+    setAttachedFiles(prev => prev.filter(f => f.file_id !== fileId))
+  }
 
   /* ================= SEND ================= */
 
@@ -169,7 +211,9 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
       await chatStream(
         userText,
         conversationIdRef.current,
+        attachedFiles.map(f => f.file_id),
         (chunk) => {
+          if (chunk.startsWith('data:image') || chunk.length > 5000) return
           finalText += chunk
           setMessages(prev =>
             prev.map(msg =>
@@ -187,14 +231,13 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
 
           if (meta?.images) {
             finalImages = meta.images
-
             setMessages(prev =>
               prev.map(msg =>
                 msg.id === streamingId
                   ? {
                       ...msg,
                       images: meta.images,
-                      imageRequested: meta.requested || meta.images.length,
+                      imageRequested: meta.images.length,
                       imagePage: 1
                     }
                   : msg
@@ -206,6 +249,7 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
     } finally {
       streamingIdRef.current = null
       setLoading(false)
+      setAttachedFiles([])
 
       setMessages(prev =>
         prev.map(msg => {
@@ -230,131 +274,164 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
     }
   }
 
-  /* ================= UI ================= */
+/* ================= UI ================= */
 
-  const showWelcome = activeConversationId === null && !hideWelcome
+const showWelcome = activeConversationId === null && !hideWelcome
 
-  return (
-    <div className="chatbot-container">
-      <div className={`messages-container ${showWelcome ? 'centered' : ''}`}>
+return (
+  <div className="chatbot-container">
+    <div className={`messages-container ${showWelcome ? 'centered' : ''}`}>
 
-        {showWelcome && (
-          <div className="message assistant welcome">
+      {showWelcome && (
+        <div className="message assistant welcome">
+          <div className="message-content">
+            Nice to meet you. What’s on your mind today?
+          </div>
+        </div>
+      )}
+
+      {messages.map(msg => {
+        const isStreaming = msg.id === streamingIdRef.current
+
+        const images = Array.isArray(msg.images) ? msg.images : []
+        const page = msg.imagePage || 1
+        const perPage = 3
+
+        const totalImages = msg.imageRequested || images.length
+        const totalPages = Math.ceil(totalImages / perPage)
+
+        const start = (page - 1) * perPage
+        const end = start + perPage
+        const visibleImages = images.slice(start, end)
+
+        return (
+          <div
+            key={msg.id}
+            className={`message ${msg.role} ${isStreaming ? 'streaming' : ''}`}
+          >
             <div className="message-content">
-              Nice to meet you. What’s on your mind today?
+
+              {/* ✅ SHOW GENERATING ONLY WHILE TEXT IS EMPTY */}
+              {msg.role === 'assistant' && isStreaming && !msg.message && (
+                <div className="thinking">
+                  <span className="thinking-dot" />
+                  <span className="thinking-dot" />
+                  <span className="thinking-dot" />
+                  <span>Generating</span>
+                </div>
+              )}
+
+              {renderMessage(msg.message)}
+
+              {/* ✅ IMAGE PAGINATION — 3 PER PAGE */}
+              {visibleImages.length > 0 && (
+                <div className="assistant-image-grid">
+                  {visibleImages.map((img, idx) => (
+                    <img
+                      key={idx}
+                      src={img.url}
+                      alt={img.alt || 'generated'}
+                      className="chat-image"
+                      onClick={() => setLightboxImage(img)}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {/* ✅ PAGINATION CONTROLS */}
+              {totalPages > 1 && (
+                <div className="image-pagination">
+                  <button
+                    disabled={page === 1}
+                    onClick={() =>
+                      setMessages(prev =>
+                        prev.map(m =>
+                          m.id === msg.id
+                            ? { ...m, imagePage: page - 1 }
+                            : m
+                        )
+                      )
+                    }
+                  >
+                    Prev
+                  </button>
+
+                  <span>{page} / {totalPages}</span>
+
+                  <button
+                    disabled={page === totalPages}
+                    onClick={() =>
+                      setMessages(prev =>
+                        prev.map(m =>
+                          m.id === msg.id
+                            ? { ...m, imagePage: page + 1 }
+                            : m
+                        )
+                      )
+                    }
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+
             </div>
           </div>
-        )}
+        )
+      })}
 
-        {messages.map(msg => {
-          const isStreaming = msg.id === streamingIdRef.current
-          const page = msg.imagePage || 1
-          const perPage = 3
+      {/* ✅ SCROLL ANCHOR RESTORED */}
+      <div ref={messagesEndRef} />
 
-          /* ✅ FIX: normalize images safely */
-          const images = Array.isArray(msg.images) ? msg.images : []
-          const totalImages = msg.imageRequested || images.length
+    </div> {/* ✅ messages-container CLOSED */}
 
-          const start = (page - 1) * perPage
-          const end = start + perPage
-          const visibleImages = images.slice(start, end)
+    <div className="input-container">
 
-          const totalPages = Math.ceil(totalImages / perPage)
-
-          return (
-            <div
-              key={msg.id}
-              className={`message ${msg.role} ${isStreaming ? 'streaming' : ''}`}
-            >
-              <div className="message-content">
-
-                {msg.role === 'assistant' && isStreaming && (
-                  <div className="thinking">
-                    <span className="thinking-dot" />
-                    <span className="thinking-dot" />
-                    <span className="thinking-dot" />
-                    <span>Generating</span>
-                  </div>
-                )}
-
-                {msg.role === 'assistant' && visibleImages.length > 0 && (
-                  <>
-                    <div className="assistant-image-grid">
-                      {visibleImages.map((img, i) => (
-                        <img
-                          key={i}
-                          src={img.url}
-                          alt={img.alt}
-                          loading="lazy"
-                          onClick={() => setLightboxImage(img)}
-                        />
-                      ))}
-                    </div>
-
-                    {totalPages > 1 && (
-                      <div className="image-pagination">
-                        <button
-                          disabled={page === 1}
-                          onClick={() =>
-                            setMessages(prev =>
-                              prev.map(m =>
-                                m.id === msg.id
-                                  ? { ...m, imagePage: page - 1 }
-                                  : m
-                              )
-                            )
-                          }
-                        >
-                          ‹
-                        </button>
-                        <span>
-                          {page} / {totalPages}
-                        </span>
-                        <button
-                          disabled={page === totalPages}
-                          onClick={() =>
-                            setMessages(prev =>
-                              prev.map(m =>
-                                m.id === msg.id
-                                  ? { ...m, imagePage: page + 1 }
-                                  : m
-                              )
-                            )
-                          }
-                        >
-                          ›
-                        </button>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {msg.role === 'assistant' && msg.message && (
-                  <button
-                    className={`assistant-copy-btn ${
-                      copiedMsgId === msg.id ? 'copied' : ''
-                    }`}
-                    onClick={() => copyAssistantText(msg.id, msg.message)}
-                  >
-                    {copiedMsgId === msg.id ? 'Copied ✓' : 'Copy'}
-                  </button>
-                )}
-
-                {renderMessage(msg.message)}
-              </div>
+      {attachedFiles.length > 0 && (
+        <div className="attached-files">
+          {attachedFiles.map(file => (
+            <div key={file.file_id} className="file-chip">
+              <span>{file.filename}</span>
+              <button onClick={() => removeFile(file.file_id)}>×</button>
             </div>
-          )
-        })}
+          ))}
+        </div>
+      )}
 
-        <div ref={messagesEndRef} />
-      </div>
+      <div className="input-row">
+        <div className="attach-wrapper" ref={attachMenuRef}>
+          <button
+            className="attach-button"
+            disabled={loading}
+            onClick={() => setShowAttachMenu(v => !v)}
+          >
+            📎
+          </button>
 
-      <div className="input-container">
+          {showAttachMenu && (
+            <div className="attach-menu">
+              <button onClick={() => {
+                setShowAttachMenu(false)
+                fileInputRef.current?.click()
+              }}>
+                Upload file
+              </button>
+
+              <button onClick={() => {
+                setShowAttachMenu(false)
+                imageInputRef.current?.click()
+              }}>
+                Upload photo
+              </button>
+            </div>
+          )}
+        </div>
+
         <textarea
           ref={inputRef}
           className="message-input"
           value={inputMessage}
-          placeholder="StackMind will solve that for you Ask Stackmind…"
+          placeholder="StackMind will solve that for you…"
           disabled={loading}
           onChange={(e) => setInputMessage(e.target.value)}
           onKeyDown={(e) => {
@@ -374,20 +451,21 @@ const ChatBot = ({ activeConversationId, onConversationCreated }) => {
         </button>
       </div>
 
-      {lightboxImage && (
-        <div
-          className="image-lightbox"
-          onClick={() => setLightboxImage(null)}
-        >
-          <img
-            src={lightboxImage.url}
-            alt={lightboxImage.alt}
-            onClick={(e) => e.stopPropagation()}
-          />
-        </div>
-      )}
+      <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileSelect} />
+      <input ref={imageInputRef} type="file" accept="image/*" multiple hidden onChange={handleFileSelect} />
     </div>
-  )
+
+    {lightboxImage && (
+      <div className="image-lightbox" onClick={() => setLightboxImage(null)}>
+        <img
+          src={lightboxImage.url}
+          alt={lightboxImage.alt}
+          onClick={(e) => e.stopPropagation()}
+        />
+      </div>
+    )}
+  </div>
+)
 }
 
 export default ChatBot

@@ -1,6 +1,9 @@
 import json
 import re
-from typing import Generator, Optional, Tuple
+import os
+from pathlib import Path
+from typing import Generator, Optional, Tuple, List
+
 from sqlalchemy.orm import Session
 
 from core.logger import get_logger
@@ -8,15 +11,20 @@ from services.tool_router import ToolRouter
 from repositories.conversation_repo import get_conversation, create_conversation
 from repositories.message_repo import fetch_history, save_messages
 from tools.safety import post_process_response
+from files.files_models import UploadedFile
+
+# DOCUMENT INTELLIGENCE
+from document_intelligence.pipelines.ingest_pipeline import IngestPipeline
+from document_intelligence.cache.index_cache import DocumentIndexCache
 
 logger = get_logger(__name__)
 
 # ----------------------------------------------------
-# FOLLOW-UP SIGNAL CONFIG (STRICT)
+# FOLLOW-UP SIGNAL CONFIG
 # ----------------------------------------------------
 
 FOLLOWUP_PRONOUNS = {
-    "it", "this", "that", "they", "them", "those", "he", "she", "above", "below"
+    "it", "this", "that", "they", "them", "those", "above", "below"
 }
 
 FOLLOWUP_PHRASES = {
@@ -36,9 +44,7 @@ HARD_NEW_QUERY_PATTERNS = [
     r"\bjava\b",
     r"\bapi\b",
     r"\berror\b",
-    r"\btable\b",
     r"\bexcel\b",
-    r"\bfile\b",
 ]
 
 # ----------------------------------------------------
@@ -72,102 +78,58 @@ def _is_potential_followup(message: str) -> bool:
     return False
 
 
-def _are_domains_compatible(prev: str, curr: str) -> bool:
-    prev_l = prev.lower()
-    curr_l = curr.lower()
-
-    DOMAIN_KEYWORDS = {
-        "politics": ["prime minister", "president", "government", "minister"],
-        "weather": ["weather", "temperature", "rain"],
-        "tech": ["code", "api", "bug", "python", "java"],
-        "media": ["video", "youtube", "song", "movie"],
-    }
-
-    def detect_domain(text: str) -> Optional[str]:
-        for domain, keys in DOMAIN_KEYWORDS.items():
-            if any(k in text for k in keys):
-                return domain
-        return None
-
-    prev_domain = detect_domain(prev_l)
-    curr_domain = detect_domain(curr_l)
-
-    if prev_domain and curr_domain and prev_domain != curr_domain:
-        return False
-
-    return True
-
-
-# ----------------------------------------------------
-# SUBJECT EXTRACTION
-# ----------------------------------------------------
-
-def _extract_subject(question: str) -> str:
-    q = question.strip().rstrip("?")
-    q = re.sub(
-        r"^(who|what|when|where|why|how|tell me|explain)\s+",
-        "",
-        q,
-        flags=re.IGNORECASE
-    )
-    return q.strip()
-
-
-# ----------------------------------------------------
-# FOLLOW-UP NORMALIZATION
-# ----------------------------------------------------
-
-def _normalize_followup(prev: str, curr: str) -> str:
-    subject = _extract_subject(prev)
-    curr_l = curr.lower()
-
-    if any(k in curr_l for k in ["who", "when", "where", "why", "how"]):
-        return f"{curr.strip()} about {subject}?"
-
-    if any(k in curr_l for k in ["explain", "meaning", "details"]):
-        return f"Explain {subject}."
-
-    if any(k in curr_l for k in ["example", "examples"]):
-        return f"Give examples related to {subject}."
-
-    if any(k in curr_l for k in ["continue", "more"]):
-        return f"Continue explaining {subject}."
-
-    return f"{curr.strip()} (context: {subject})."
-
-
 def _resolve_followup(
+    *,
     message: str,
     last_user_message: Optional[str]
 ) -> Tuple[str, bool]:
 
-    if not last_user_message:
-        return message, False
+    normalized = message.strip()
+    is_followup = False
 
-    if not _is_potential_followup(message):
-        return message, False
+    if last_user_message and _is_potential_followup(normalized):
+        is_followup = True
 
-    if not _are_domains_compatible(last_user_message, message):
-        logger.info(
-            "FOLLOWUP_REJECTED | domain_mismatch | prev=%s | curr=%s",
-            last_user_message,
-            message
+    return normalized, is_followup
+
+
+# ----------------------------------------------------
+# FILE RESOLUTION
+# ----------------------------------------------------
+
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "./uploads")).resolve()
+
+def _resolve_attached_files(
+    *,
+    db: Session,
+    user_id: int,
+    file_ids: List[str]
+) -> List[dict]:
+
+    if not file_ids:
+        return []
+
+    records = (
+        db.query(UploadedFile)
+        .filter(
+            UploadedFile.file_id.in_(file_ids),
+            UploadedFile.user_id == user_id
         )
-        return message, False
-
-    normalized = _normalize_followup(
-        prev=last_user_message,
-        curr=message
+        .all()
     )
 
-    logger.info(
-        "FOLLOWUP_NORMALIZED | raw=%s | prev=%s | normalized=%s",
-        message,
-        last_user_message,
-        normalized
-    )
+    resolved = []
+    for r in records:
+        resolved.append({
+            "file_id": r.file_id,
+            "filename": r.original_filename,
+            "mime_type": r.mime_type,
+            "size_bytes": r.size_bytes,
+            "path": str(UPLOAD_DIR / r.storage_path),
+        })
 
-    return normalized, True
+    logger.info("FILES_RESOLVED | count=%d", len(resolved))
+    return resolved
 
 
 # ----------------------------------------------------
@@ -179,28 +141,31 @@ def process_chat_stream_core(
     db: Session,
     user_id: int,
     message: str,
-    conversation_id: int | None
+    conversation_id: int | None,
+    attached_files: List[str] | None = None
 ) -> Generator[str, None, None]:
 
     try:
-        conversation = None
+        # --------------------------------------------
+        # Conversation bootstrap
+        # --------------------------------------------
 
+        conversation = None
         if conversation_id is not None:
             conversation = get_conversation(
-                db,
+                db=db,
                 conversation_id=conversation_id,
                 user_id=user_id
             )
 
         if conversation is None:
-            # ✅ FIX: keyword-only argument
             conversation = create_conversation(
-                db,
+                db=db,
                 user_id=user_id
             )
 
         history = fetch_history(
-            db,
+            db=db,
             conversation_id=conversation.id,
             user_id=user_id
         )
@@ -217,60 +182,112 @@ def process_chat_stream_core(
             last_user_message=last_user_message
         )
 
-        logger.info(
-            "MESSAGE_CLASSIFICATION | followup=%s | normalized=%s",
-            is_followup,
-            normalized_message if is_followup else "N/A"
+        # --------------------------------------------
+        # DOCUMENT INGEST / RESTORE
+        # --------------------------------------------
+
+        ingest = IngestPipeline()
+        cache = DocumentIndexCache()
+        document_index = None
+
+        resolved_files = _resolve_attached_files(
+            db=db,
+            user_id=user_id,
+            file_ids=attached_files or []
         )
 
-        # ------------------------------------------------
-        # TOOL ROUTER (STREAMING)
-        # ------------------------------------------------
+        # Case 1: New document attached
+        for f in resolved_files:
+            if f["filename"].lower().endswith(".pdf"):
+                doc_id = f["file_id"]
+
+                if not cache.exists(doc_id):
+                    document_index = ingest.ingest(
+                        document_id=doc_id,
+                        file_path=f["path"],
+                    )
+                else:
+                    document_index = cache.get(doc_id)
+
+                # 🔐 store conversation → document mapping in cache
+                cache.set_active_document(conversation.id, doc_id)
+
+                logger.info(
+                    "CHAT_ACTIVE_DOCUMENT_SET | conversation_id=%s | document_id=%s",
+                    conversation.id,
+                    doc_id,
+                )
+                break
+
+        # Case 2: Follow-up without attachment
+        if document_index is None:
+            active_doc_id = cache.get_active_document(conversation.id)
+
+            if active_doc_id:
+                logger.info(
+                    "CHAT_ACTIVE_DOCUMENT_RESTORED | conversation_id=%s | document_id=%s",
+                    conversation.id,
+                    active_doc_id,
+                )
+
+                if cache.exists(active_doc_id):
+                    document_index = cache.get(active_doc_id)
+
+        # --------------------------------------------
+        # FINAL ROUTING LOGS
+        # --------------------------------------------
+
+        logger.info(
+            "CHAT_DOC_CONTEXT_CHECK | attached_files=%d | is_followup=%s | conversation_id=%s",
+            len(attached_files or []),
+            is_followup,
+            conversation.id,
+        )
+
+        logger.info(
+            "CHAT_MODE_SELECTED | mode=%s | document_id=%s",
+            "document" if document_index else "chat",
+            document_index.document_id if document_index else None,
+        )
+
+        # --------------------------------------------
+        # TOOL ROUTER
+        # --------------------------------------------
+
         stream = ToolRouter.stream_response(
             message=normalized_message,
-            conversation_history=conversation_history
+            conversation_history=conversation_history,
+            document_index=document_index
         )
 
-        # Emit conversation id once
         yield f'__META__{json.dumps({"conversation_id": conversation.id})}\n'
 
         assistant_full_response = ""
-        assistant_images: list[dict] = []
 
         for chunk in stream:
             if not chunk:
                 continue
 
-            stripped = chunk.lstrip()
-
-            # ---------------- META FRAME ----------------
-            if stripped.startswith("__META__"):
+            if chunk.lstrip().startswith("__META__"):
                 yield chunk
-
-                try:
-                    meta = json.loads(stripped[len("__META__"):])
-
-                    # Only collect assistant images
-                    if isinstance(meta, dict) and "images" in meta:
-                        assistant_images = meta["images"]
-
-                except Exception:
-                    logger.warning("META_PARSE_FAILED | chunk=%s", stripped)
-
                 continue
 
-            # ---------------- TEXT CHUNK ----------------
             assistant_full_response += chunk
             yield chunk
 
+        assistant_full_response = post_process_response(assistant_full_response)
+
         save_messages(
-            db,
+            db=db,
             conversation_id=conversation.id,
             user_message=message,
             assistant_message=assistant_full_response,
             assistant_meta={
-                "images": assistant_images
-            } if assistant_images else None
+                "files": [
+                    {"file_id": f["file_id"], "filename": f["filename"]}
+                    for f in resolved_files
+                ]
+            } if resolved_files else None
         )
 
         db.commit()

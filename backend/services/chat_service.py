@@ -25,12 +25,14 @@ class ChatService:
         db: Session,
         user_id: int,
         message: str,
-        conversation_id: int | None
+        conversation_id: int | None,
+        attached_files: list[str] | None = None
     ):
         logger.info(
-            "CHAT_SERVICE_START | user_id=%s | conversation_id=%s",
+            "CHAT_SERVICE_START | user_id=%s | conversation_id=%s | attached_files=%s",
             user_id,
-            conversation_id
+            conversation_id,
+            attached_files
         )
 
         try:
@@ -38,7 +40,8 @@ class ChatService:
                 db=db,
                 user_id=user_id,
                 message=message,
-                conversation_id=conversation_id
+                conversation_id=conversation_id,
+                attached_files=attached_files
             )
 
             logger.debug(

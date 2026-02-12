@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 
 
 # =========================================================
@@ -12,6 +12,9 @@ class ChatMessage(BaseModel):
     # conversation_id MUST be int
     # Backend, DB, and frontend all use integers
     conversation_id: Optional[int] = None
+
+    # ✅ NEW (optional, backward compatible)
+    attached_files: Optional[List[str]] = None
 
 
 class ChatResponse(BaseModel):

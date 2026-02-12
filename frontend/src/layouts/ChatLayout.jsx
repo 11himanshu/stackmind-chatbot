@@ -74,7 +74,8 @@ const ChatLayout = () => {
   return (
     <div
       style={{
-        height: '100vh',
+        height: '100%',
+        minHeight: 0,
         width: '100%',
         background: 'var(--bg-surface)',
         overflow: 'hidden',
@@ -221,6 +222,7 @@ const ChatLayout = () => {
         style={{
           paddingTop: HEADER_HEIGHT,
           flex: 1,
+          minHeight: 0,
           display: 'flex',
           overflow: 'hidden'
         }}

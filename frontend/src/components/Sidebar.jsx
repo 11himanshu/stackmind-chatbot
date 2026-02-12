@@ -7,6 +7,9 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
   const [conversations, setConversations] = useState([])
   const [isMobile, setIsMobile] = useState(false)
 
+  // 🔴 track delete-in-progress
+  const [deletingId, setDeletingId] = useState(null)
+
   // =========================================================
   // Detect mobile (iOS-safe)
   // =========================================================
@@ -19,10 +22,10 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
   }, [])
 
   // =========================================================
-  // Load conversations (ONLY ON MOUNT)
+  // Load conversations (returns promise)
   // =========================================================
   const loadConversations = useCallback(() => {
-    fetchConversations()
+    return fetchConversations()
       .then(setConversations)
       .catch(console.error)
   }, [])
@@ -36,8 +39,23 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
   // =========================================================
   const handleDelete = async (e, id) => {
     e.stopPropagation()
-    await deleteConversation(id)
-    loadConversations()
+
+    if (deletingId) return
+
+    try {
+      setDeletingId(id)
+
+      // 1️⃣ wait for backend delete
+      await deleteConversation(id)
+
+      // 2️⃣ refresh list AFTER delete
+      await loadConversations()
+
+    } catch (err) {
+      console.error('DELETE_FAILED', err)
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   const handleNewChat = () => {
@@ -45,17 +63,15 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
   }
 
   const handleSelect = (id) => {
-    if (id === activeConversationId) return
+    if (id === activeConversationId || deletingId) return
     onSelectConversation(id)
   }
 
-  const handleClose = () => {
-    // close sidebar only — do NOT touch conversation state
-  }
+  const handleClose = () => {}
 
   return (
     <>
-      {/* ================= Overlay (mobile only, BELOW header) ================= */}
+      {/* ================= Overlay (mobile only) ================= */}
       {isMobile && (
         <div
           onClick={handleClose}
@@ -77,28 +93,23 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
           position: isMobile ? 'fixed' : 'relative',
           top: isMobile ? HEADER_HEIGHT : 0,
           left: 0,
-
           width: 300,
           maxWidth: '85vw',
           height: isMobile
             ? `calc(100dvh - ${HEADER_HEIGHT}px)`
             : 'calc(100vh - 24px)',
-
           margin: isMobile ? 0 : 12,
-
           background: 'var(--bg-input)',
           borderRight: '1px solid var(--border-strong)',
           borderRadius: isMobile ? '0 18px 18px 0' : 18,
-
           boxShadow: 'var(--shadow-medium)',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
-
           zIndex: 50
         }}
       >
-        {/* ================= Sidebar Header ================= */}
+        {/* ================= Header ================= */}
         <div
           style={{
             position: 'sticky',
@@ -117,14 +128,11 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
           {isMobile && (
             <button
               onClick={handleClose}
-              aria-label="Close sidebar"
               style={{
                 background: 'transparent',
                 border: 'none',
-                color: 'var(--text-primary)',
                 fontSize: 24,
-                cursor: 'pointer',
-                lineHeight: 1
+                cursor: 'pointer'
               }}
             >
               ✕
@@ -145,13 +153,11 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
               width: '100%',
               padding: '14px',
               borderRadius: 14,
-              background: 'var(--bg-surface)',
-              color: 'var(--text-primary)',
+              background: 'linear-gradient(135deg, #ffffff, #f8fafc)',
+              color: '#0f172a',
               border: '1px solid var(--border-strong)',
-              fontSize: 15,
               fontWeight: 600,
-              cursor: 'pointer',
-              boxShadow: 'var(--shadow-soft)'
+              cursor: 'pointer'
             }}
           >
             ＋ New Chat
@@ -166,21 +172,9 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
             padding: 8
           }}
         >
-          {conversations.length === 0 && (
-            <div
-              style={{
-                padding: 24,
-                fontSize: 13,
-                textAlign: 'center',
-                opacity: 0.6
-              }}
-            >
-              No conversations yet
-            </div>
-          )}
-
           {conversations.map(c => {
             const isActive = c.id === activeConversationId
+            const isDeleting = deletingId === c.id
 
             return (
               <div
@@ -193,14 +187,16 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   gap: 10,
-                  cursor: 'pointer',
                   borderRadius: 12,
+                  cursor: isDeleting ? 'default' : 'pointer',
                   border: isActive
                     ? '1px solid rgba(99,102,241,0.6)'
                     : '1px solid var(--border-subtle)',
                   background: isActive
                     ? 'rgba(99,102,241,0.15)'
-                    : 'transparent'
+                    : 'transparent',
+                  opacity: isDeleting ? 0.6 : 1,
+                  pointerEvents: isDeleting ? 'none' : 'auto'
                 }}
               >
                 <span
@@ -216,9 +212,15 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
                   {c.title}
                 </span>
 
+                {/* 🗑 spinner stays mounted */}
                 <span
                   onClick={(e) => handleDelete(e, c.id)}
-                  style={{ cursor: 'pointer', opacity: 0.7 }}
+                  style={{
+                    opacity: isDeleting ? 0.9 : 0.7,
+                    animation: isDeleting
+                      ? 'spin 0.8s linear infinite'
+                      : 'none'
+                  }}
                 >
                   🗑
                 </span>
@@ -227,6 +229,15 @@ const Sidebar = ({ activeConversationId, onSelectConversation }) => {
           })}
         </div>
       </div>
+
+      <style>
+        {`
+          @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+          }
+        `}
+      </style>
     </>
   )
 }

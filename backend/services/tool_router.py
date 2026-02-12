@@ -10,6 +10,8 @@ import requests
 from datetime import datetime
 from typing import Generator, List, Dict, Optional
 
+from document_intelligence.schemas.document_index import DocumentIndex
+
 logger = get_logger(__name__)
 
 # ============================================================
@@ -24,41 +26,23 @@ DEFAULT_PAGE = 1
 DEFAULT_PER_PAGE = 3
 
 # ------------------------------------------------------------
-# NUMBER WORDS (generated, extensible)
+# NUMBER WORDS
 # ------------------------------------------------------------
 
 _NUMBER_WORD_LIST = [
-    "zero",
-    "one",
-    "two",
-    "three",
-    "four",
-    "five",
-    "six",
-    "seven",
-    "eight",
-    "nine",
-    "ten",
-    "eleven",
-    "twelve",
-    "thirteen",
-    "fourteen",
-    "fifteen",
-    "sixteen",
-    "seventeen",
-    "eighteen",
-    "nineteen",
-    "twenty",
+    "zero", "one", "two", "three", "four", "five",
+    "six", "seven", "eight", "nine", "ten",
+    "eleven", "twelve", "thirteen", "fourteen",
+    "fifteen", "sixteen", "seventeen", "eighteen",
+    "nineteen", "twenty",
 ]
 
 NUMBER_WORDS = {
-    word: i
-    for i, word in enumerate(_NUMBER_WORD_LIST)
-    if i > 0
+    word: i for i, word in enumerate(_NUMBER_WORD_LIST) if i > 0
 }
 
-# Natural language quantities
 QUANTITY_PHRASES = {
+    "a": 1,
     "a couple of": 2,
     "couple of": 2,
     "a few": 3,
@@ -110,7 +94,7 @@ IMAGE_DESCRIBE_KEYWORDS = {
     "what am i seeing",
     "what am i looking at",
     "while describing",
-    "there image", "there pics", "there photo", "there picture",
+    "while describing them",
 }
 
 def _wants_image_generation(message: str) -> bool:
@@ -120,6 +104,12 @@ def _wants_image_description(message: str, history: List[Dict]) -> bool:
     if not any(k in message for k in IMAGE_DESCRIBE_KEYWORDS):
         return False
     return any(m.get("role") == "assistant" and m.get("images") for m in history)
+
+def _wants_image_and_description(message: str) -> bool:
+    return (
+        _wants_image_generation(message)
+        and any(k in message for k in IMAGE_DESCRIBE_KEYWORDS)
+    )
 
 # ============================================================
 # SUBJECT EXTRACTION
@@ -132,17 +122,12 @@ def _extract_named_entity(text: str) -> Optional[str]:
         text
     )
     text = re.sub(r"\s+", " ", text).strip()
-
     if not text or text in PRONOUNS:
         return None
-
-    if len(text.split()) == 1 and text in PRONOUNS:
-        return None
-
     return text
 
 # ============================================================
-# IMAGE COUNT (FIXED)
+# IMAGE COUNT
 # ============================================================
 
 def _extract_image_count(message: str) -> int:
@@ -167,13 +152,11 @@ def _extract_image_count(message: str) -> int:
 def _sanitize_subject(subject: str) -> Optional[str]:
     if not subject:
         return None
-
     s = subject
     s = re.sub(r"\b(with|using|having)\b.*", "", s)
     s = re.sub(r"\b(image|images|photo|photos|picture|pictures|pic|pics)\b", "", s)
     s = re.sub(r"\b(show me|tell me|give me|about)\b", "", s)
     s = re.sub(r"\b(one|two|three|four|five|six|\d+)\b", "", s)
-
     s = s.strip()
     return s if s and s not in PRONOUNS else None
 
@@ -187,12 +170,10 @@ def _extract_subject_from_text(text: str) -> Optional[str]:
         r"tell me about (.+)",
         r"(.+) with (an |a )?(image|photo|picture)",
     ]
-
     for p in patterns:
         m = re.search(p, text)
         if m:
             return _sanitize_subject(m.group(1))
-
     return None
 
 # ============================================================
@@ -211,39 +192,26 @@ def _resolve_subject_from_history(history: List[Dict]) -> Optional[str]:
                 return candidate
     return None
 
-def _resolve_image_subject(
-    message: str,
-    history: List[Dict],
-) -> Optional[str]:
-
+def _resolve_image_subject(message: str, history: List[Dict]) -> Optional[str]:
     explicit = _extract_subject_from_text(message)
     if explicit:
         return explicit
-
     entity = _extract_named_entity(message)
     if entity:
-        logger.info("NAMED_ENTITY_DETECTED | %s", entity)
         return entity
-
     if _is_pronoun_only(message):
-        resolved = _resolve_subject_from_history(history)
-        if resolved:
-            return resolved
-
-    logger.warning("IMAGE_SUBJECT_UNRESOLVED")
+        return _resolve_subject_from_history(history)
     return None
 
 # ============================================================
-# UNSPLASH (EXACT IMAGE FETCH – ADDED, OLD FUNCTION KEPT)
+# UNSPLASH
 # ============================================================
 
 def _fetch_exact_unsplash_images(query: str, count: int) -> List[Dict]:
     images: List[Dict] = []
     page = 1
-
     while len(images) < count:
         per_page = min(30, count - len(images))
-
         r = requests.get(
             "https://api.unsplash.com/search/photos",
             params={
@@ -255,20 +223,11 @@ def _fetch_exact_unsplash_images(query: str, count: int) -> List[Dict]:
             headers={"Authorization": f"Client-ID {UNSPLASH_ACCESS_KEY}"},
             timeout=6,
         )
-
         if r.status_code != 200:
-            logger.warning("UNSPLASH_FAILED | query=%s | page=%d", query, page)
             break
-
-        data = r.json()
-        results = data.get("results", [])
-        if not results:
-            break
-
-        for p in results:
+        for p in r.json().get("results", []):
             if len(images) >= count:
                 break
-
             images.append({
                 "url": p["urls"]["regular"],
                 "alt": query,
@@ -277,23 +236,8 @@ def _fetch_exact_unsplash_images(query: str, count: int) -> List[Dict]:
                     "link": p["user"]["links"]["html"],
                 },
             })
-
         page += 1
-
     return images
-
-# ============================================================
-# UNSPLASH (OLD PAGINATED FUNCTION – UNTOUCHED)
-# ============================================================
-
-def _resolve_unsplash_images(
-    query: str,
-    page: int,
-    per_page: int,
-) -> Dict:
-    ...
-    # unchanged on purpose
-    ...
 
 # ============================================================
 # TOOL ROUTER
@@ -306,18 +250,74 @@ class ToolRouter:
         *,
         message: str,
         conversation_history: List[Dict],
+        document_index: Optional[DocumentIndex] = None
     ) -> Generator[str, None, None]:
 
         try:
             raw_message = message
             msg = re.sub(r"\s+", " ", message.lower()).strip()
 
-            # ---------- SAFETY ----------
+            # ====================================================
+            # DOCUMENT METADATA (DETERMINISTIC, NO LLM)
+            # ====================================================
+
+            if document_index is not None:
+                if "how many blocks" in msg:
+                    yield str(len(document_index.blocks))
+                    return
+
+                if "how many pages" in msg:
+                    pages = {
+                        b.location.page
+                        for b in document_index.blocks
+                        if b.location.page is not None
+                    }
+                    yield str(len(pages))
+                    return
+
+            # ====================================================
+            # SAFETY
+            # ====================================================
+
             if _is_copyrighted_request(msg):
                 yield "I cannot provide full copyrighted lyrics."
                 return
 
-            # ---------- IMAGE GENERATE (FIXED) ----------
+            # ====================================================
+            # IMAGE + DESCRIPTION
+            # ====================================================
+
+            if _wants_image_and_description(msg):
+                subject = _resolve_image_subject(msg, conversation_history)
+                if not subject:
+                    yield "I need a clearer subject to show images."
+                    return
+
+                requested_count = _extract_image_count(msg)
+                images = _fetch_exact_unsplash_images(subject, requested_count)
+
+                yield "__META__" + json.dumps({
+                    "images": images,
+                    "requested": requested_count,
+                }) + "\n"
+
+                for chunk in stream_llm_response(
+                    message=raw_message,
+                    conversation_history=conversation_history,
+                    tool_context="",
+                ):
+                    yield chunk
+                return
+
+            if _wants_image_description(msg, conversation_history):
+                for chunk in stream_llm_response(
+                    message=raw_message,
+                    conversation_history=conversation_history,
+                    tool_context="",
+                ):
+                    yield chunk
+                return
+
             if _wants_image_generation(msg):
                 subject = _resolve_image_subject(msg, conversation_history)
                 if not subject:
@@ -331,17 +331,12 @@ class ToolRouter:
                     "images": images,
                     "requested": requested_count,
                 }) + "\n"
-
-                if any(k in msg for k in ("tell me", "about", "describe")):
-                    for chunk in stream_llm_response(
-                        message=raw_message,
-                        conversation_history=conversation_history,
-                        tool_context="",
-                    ):
-                        yield chunk
                 return
 
-            # ---------- TEXT / WEB ----------
+            # ====================================================
+            # WEB SEARCH
+            # ====================================================
+
             analysis = analyze_request(raw_message)
             if analysis.get("knowledge_freshness") == "real_time":
                 ctx = run_web_search(raw_message)
@@ -352,6 +347,10 @@ class ToolRouter:
                 ):
                     yield c
                 return
+
+            # ====================================================
+            # DEFAULT LLM
+            # ====================================================
 
             for c in stream_llm_response(
                 message=raw_message,

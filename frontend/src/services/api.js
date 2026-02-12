@@ -13,11 +13,11 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 /* =========================================================
    Helper: Auth headers
    ========================================================= */
-const authHeaders = () => {
+const authHeaders = (includeJson = true) => {
   const token = localStorage.getItem('token')
 
   return {
-    'Content-Type': 'application/json',
+    ...(includeJson ? { 'Content-Type': 'application/json' } : {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {})
   }
 }
@@ -76,6 +76,34 @@ export const login = async (username, password) => {
   })
 }
 
+/* ===================== FILE UPLOAD ===================== */
+/*
+  Uploads a single file.
+  Returns:
+  {
+    file_id: string,
+    filename: string,
+    file_type: string
+  }
+*/
+export const uploadFile = async (file) => {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const response = await fetch(`${API_BASE_URL}/files/upload`, {
+    method: 'POST',
+    headers: authHeaders(false), // IMPORTANT: no JSON header for multipart
+    body: formData
+  })
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}))
+    throw new Error(err.detail || 'File upload failed')
+  }
+
+  return await response.json()
+}
+
 /* ===================== CHAT (STREAM) ===================== */
 
 let activeChatController = null
@@ -83,6 +111,7 @@ let activeChatController = null
 export const chatStream = async (
   message,
   conversationId = null,
+  attachedFiles = [],     // ✅ NEW (optional)
   onChunk,
   onMeta
 ) => {
@@ -100,7 +129,8 @@ export const chatStream = async (
     signal: controller.signal,
     body: JSON.stringify({
       message,
-      conversation_id: conversationId
+      conversation_id: conversationId,
+      attached_files: attachedFiles // ✅ SAFE ADDITION
     })
   })
 

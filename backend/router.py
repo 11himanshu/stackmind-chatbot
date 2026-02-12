@@ -51,9 +51,10 @@ async def chat(
     db: Session = Depends(get_db)
 ):
     logger.info(
-        "CHAT_REQUEST_RECEIVED | user_id=%s | conversation_id=%s",
+        "CHAT_REQUEST_RECEIVED | user_id=%s | conversation_id=%s | attached_files=%s",
         user_id,
-        chat_message.conversation_id
+        chat_message.conversation_id,
+        chat_message.attached_files
     )
 
     try:
@@ -67,7 +68,8 @@ async def chat(
             db=db,
             user_id=user_id,
             message=chat_message.message,
-            conversation_id=conversation_id
+            conversation_id=conversation_id,
+            attached_files=chat_message.attached_files
         )
 
         logger.debug(

@@ -22,13 +22,15 @@ def process_chat_stream(
     db: Session,
     user_id: int,
     message: str,
-    conversation_id: int | None = None
+    conversation_id: int | None = None,
+    attached_files: list[str] | None = None
 ):
     return process_chat_stream_core(
         db=db,
         user_id=user_id,
         message=message,
-        conversation_id=conversation_id
+        conversation_id=conversation_id,
+        attached_files=attached_files
     )
 
 
