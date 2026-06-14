@@ -49,7 +49,8 @@ try:
         max_overflow=10,         # prevent connection storms
         pool_recycle=1800,       # recycle every 30 min
         connect_args={
-            "sslmode": "require"  # required for Supabase
+            "sslmode": "require",  # required for Supabase
+            "connect_timeout": 10,
         }
     )
     logger.info("DB_ENGINE_READY | SQLAlchemy engine created")

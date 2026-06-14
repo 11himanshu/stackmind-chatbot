@@ -48,7 +48,11 @@ try:
 
     @app.on_event("startup")
     def startup():
-        Base.metadata.create_all(bind=engine)
+        try:
+            Base.metadata.create_all(bind=engine)
+            logger.info("DB_TABLE_INIT_SUCCESS | Database tables ensured")
+        except Exception:
+            logger.exception("DB_TABLE_INIT_FAILED | Continuing startup without table initialization")
 
     logger.info("DB_INIT_SUCCESS | Database tables ensured")
 except Exception:
