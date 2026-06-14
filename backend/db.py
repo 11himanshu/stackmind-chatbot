@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 from dotenv import load_dotenv
 
@@ -22,40 +22,53 @@ except Exception:
     raise
 
 
-# ============================================================
-# Database URL
-# ============================================================
-DATABASE_URL = os.getenv("DATABASE_URL")
-
-if not DATABASE_URL:
-    logger.error(
-        "DB_CONFIG_ERROR | DATABASE_URL not found in environment"
-    )
-    raise RuntimeError(
-        "DB_CONFIG_ERROR | DATABASE_URL is not set. Check your .env file."
-    )
-
-logger.info("DB_CONFIG_OK | DATABASE_URL loaded successfully")
-
-
-# ============================================================
-# SQLAlchemy Engine (SUPABASE-SAFE CONFIG)
-# ============================================================
-try:
-    engine = create_engine(
-        DATABASE_URL,
-        pool_pre_ping=True,      # auto-recover dead connections
-        pool_size=5,             # safe default for Supabase
-        max_overflow=10,         # prevent connection storms
-        pool_recycle=1800,       # recycle every 30 min
-        connect_args={
-            "sslmode": "require",  # required for Supabase
-            "connect_timeout": 10,
+def _engine_options(database_url: str) -> dict:
+    if database_url.startswith("sqlite"):
+        return {
+            "connect_args": {"check_same_thread": False},
         }
-    )
-    logger.info("DB_ENGINE_READY | SQLAlchemy engine created")
+
+    return {
+        "pool_pre_ping": True,
+        "pool_size": 5,
+        "max_overflow": 10,
+        "pool_recycle": 1800,
+        "connect_args": {
+            "sslmode": "require",
+            "connect_timeout": 10,
+        },
+    }
+
+
+def _create_checked_engine(database_url: str):
+    db_engine = create_engine(database_url, **_engine_options(database_url))
+    with db_engine.connect() as connection:
+        connection.execute(text("SELECT 1"))
+    return db_engine
+
+
+PRIMARY_DATABASE_URL = os.getenv("DATABASE_URL")
+SQLITE_DATABASE_URL = os.getenv("SQLITE_DATABASE_URL", "sqlite:////tmp/stackmind.db")
+
+try:
+    if PRIMARY_DATABASE_URL:
+        logger.info("DB_CONFIG_OK | DATABASE_URL loaded successfully")
+        try:
+            engine = _create_checked_engine(PRIMARY_DATABASE_URL)
+            DATABASE_URL = PRIMARY_DATABASE_URL
+            logger.info("DB_ENGINE_READY | Primary database engine created")
+        except Exception:
+            logger.exception("DB_PRIMARY_UNAVAILABLE | Falling back to SQLite")
+            engine = _create_checked_engine(SQLITE_DATABASE_URL)
+            DATABASE_URL = SQLITE_DATABASE_URL
+            logger.info("DB_ENGINE_READY | SQLite fallback database engine created")
+    else:
+        logger.warning("DB_CONFIG_MISSING | DATABASE_URL not set; using SQLite fallback")
+        engine = _create_checked_engine(SQLITE_DATABASE_URL)
+        DATABASE_URL = SQLITE_DATABASE_URL
+        logger.info("DB_ENGINE_READY | SQLite fallback database engine created")
 except Exception:
-    logger.exception("DB_ENGINE_FAILED | Failed to create SQLAlchemy engine")
+    logger.exception("DB_ENGINE_FAILED | Failed to create any database engine")
     raise
 
 
