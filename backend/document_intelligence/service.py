@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -20,7 +22,7 @@ router = APIRouter(prefix="/document", tags=["document-intelligence"])
 class DocumentProcessRequest(BaseModel):
     document_id: str
     file_path: str
-    query: str | None = None
+    query: Optional[str] = None
     mode: str  # ingest | analyze | patch
 
 
